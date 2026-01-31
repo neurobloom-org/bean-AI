@@ -1,7 +1,0 @@
-# Environment variables
-.env
-*.env
-
-# Credentials
-credentials.json
-credential.json
