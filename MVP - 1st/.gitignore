@@ -1,7 +1,36 @@
-# Environment variables
+# =========================
+# Environment Variables
+# =========================
 .env
-*.env
+GEMINI_API_KEY=""
 
-# Credentials
+# Google Cloud credentials
+GOOGLE_APPLICATION_CREDENTIALS=credentials.json
+
+# =========================
+# Audio Settings
+# =========================
+# SAMPLE_RATE=16000
+# LANGUAGE_CODE=en-US
+# VOICE_NAME=en-US-Neural2-F
+# CHUNK_DURATION_MS=100
+
+# =========================
+# Classification Thresholds
+# =========================
+# CASUAL_THRESHOLD=0.5
+# THERAPEUTIC_THRESHOLD=0.5
+
+# =========================
+# RAG Settings
+# =========================
+# VECTOR_DB_PATH=./data/vector_db
+# EMBEDDING_MODEL=all-MiniLM-L6-v2
+# TOP_K_RESULTS=3
+# CHUNK_SIZE=500
+# CHUNK_OVERLAP=50
+
+# =========================
+# Credentials (Google Cloud)
+# =========================
 credentials.json
-credential.json
