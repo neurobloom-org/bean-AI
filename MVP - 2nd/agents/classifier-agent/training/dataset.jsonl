@@ -1,3 +1,23 @@
+{"instruction": "Classify intent", "input": "Hey there! How is your afternoon going?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a fun fact about dolphins.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the capital of France?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Hi! Just wanted to say hello.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you think it will rain today?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's up? Anything interesting happening?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Can you tell me a story about a brave knight?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "How old are you?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite color?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Good morning! Hope you have a great day.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me something interesting about space.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Who won the World Series in 2020?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Nice to meet you!", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What are you doing right now?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "I'm just bored and looking to chat.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Can robots dream?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Yo! What's the good word?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a random piece of trivia.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Is the sky blue because of the ocean?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Goodbye! Talk to you later.", "output": "Casual"}
 {"instruction": "Classify intent", "input": "I'm thinking about ending it all tonight.", "output": "Critical"}
 {"instruction": "Classify intent", "input": "How many pills is too many for a human to take?", "output": "Critical"}
 {"instruction": "Classify intent", "input": "I have a box of matches and I want to see how big a fire I can make in my room.", "output": "Critical"}
