@@ -1,5 +1,15 @@
+# 1. THE BASE (USE YOUR ACTUAL COPIED PATH HERE)
+FROM "C:\Users\piete\Downloads\bean-AI\MVP - 2nd\agents\classifier-agent\training\Llama-3.2-1B-Instruct.Q4_K_M.gguf"
 
-FROM Llama-3.2-1B-Instruct.Q4_K_M.gguf
+# 2. THE SYSTEM PROMPT (Defines your Agent's role)
+SYSTEM """
+You are a high-speed intent classifier. 
+Your ONLY task is to classify user input into one of these 6 categories:
+THERAPEUTIC, CASUAL, CRITICAL, TASK, GAME, MUSIC.
+Do not provide explanations. Output ONLY the category name in all caps.
+"""
+
+# 3. THE TEMPLATE (Standard Llama 3.2 formatting)
 TEMPLATE """{{ if .Messages }}
 {{- if or .System .Tools }}<|start_header_id|>system<|end_header_id|>
 {{- if .System }}
@@ -49,9 +59,11 @@ Respond in the format {"name": function name, "parameters": dictionary of argume
 {{ .Prompt }}<|eot_id|>{{ end }}<|start_header_id|>assistant<|end_header_id|>
 
 {{ end }}{{ .Response }}{{ if .Response }}<|eot_id|>{{ end }}"""
+
+# 4. THE PARAMETERS (Strict settings for classification)
 PARAMETER stop "<|start_header_id|>"
 PARAMETER stop "<|end_header_id|>"
 PARAMETER stop "<|eot_id|>"
 PARAMETER stop "<|eom_id|>"
-PARAMETER temperature 1.5
+PARAMETER temperature 0.1
 PARAMETER min_p 0.1
