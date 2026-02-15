@@ -1,0 +1,900 @@
+{"instruction": "Classify intent", "input": "Hey there! How is your afternoon going?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a fun fact about dolphins.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the capital of France?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Hi! Just wanted to say hello.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you think it will rain today?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's up? Anything interesting happening?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Can you tell me a story about a brave knight?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "How old are you?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite color?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Good morning! Hope you have a great day.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me something interesting about space.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Who won the World Series in 2020?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Nice to meet you!", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What are you doing right now?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "I'm just bored and looking to chat.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Can robots dream?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Yo! What's the good word?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a random piece of trivia.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Is the sky blue because of the ocean?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Goodbye! Talk to you later.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "How's your day treating you so far?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a funny story about a cat.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the best way to make a cup of coffee?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you believe in aliens?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most beautiful place in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a dad joke.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What are your thoughts on artificial intelligence?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Hey! Long time no see.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the meaning of life?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the history of the internet.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite movie of all time?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Can you recommend a good book to read?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the weather like in New York right now?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like music?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a fact about penguins.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the capital of Japan?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "How do you spend your free time?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most interesting thing you've learned recently?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a riddle.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the difference between a fruit and a vegetable?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you have any pets?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite food?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a quote from a famous person.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the tallest mountain in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "How was your weekend?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the Roman Empire.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the best piece of advice you've ever received?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to travel?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a science fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the largest ocean on Earth?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite season?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the different types of clouds.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most popular sport in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you enjoy cooking?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a history fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the speed of light?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite holiday?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the Great Wall of China.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most expensive thing in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to exercise?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a space fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the smallest country in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite book?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the pyramids of Egypt.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most interesting animal you know of?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to read?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a movie fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the population of the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite color?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the Renaissance.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most beautiful song you've ever heard?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to dance?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a music fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the deepest part of the ocean?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite animal?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the Industrial Revolution.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most amazing thing about the human body?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to paint?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a sport fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the distance to the moon?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite sport?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the French Revolution.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most incredible thing you've ever seen?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to sing?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a geography fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the chemical symbol for gold?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite place to visit?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the solar system.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most powerful computer in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to draw?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me an art fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the largest desert in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite thing to do on a rainy day?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the history of flight.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most ancient civilization in history?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to write?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a literature fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the largest organ in the human body?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite type of weather?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the Wright brothers.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most famous painting in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to garden?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a nature fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the tallest tree in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite animal to see at the zoo?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the discovery of electricity.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most popular movie of all time?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to watch sports?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a biology fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the most abundant element in the universe?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite thing to eat for breakfast?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the invention of the telephone.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most beautiful building you've ever seen?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to play musical instruments?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a chemistry fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the hardest natural substance on Earth?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite thing to do on a summer day?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the history of the Olympics.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most interesting fact about the brain?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to solve puzzles?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a physics fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the largest bird in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite thing to do on a winter day?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the moon landing.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most famous statue in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to birdwatch?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me an astronomy fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the fastest bird in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite thing to do on a spring day?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the history of the printing press.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most interesting fact about the heart?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to stargaze?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a technology fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the largest fish in the ocean?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite thing to do on an autumn day?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the development of the computer.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most famous bridge in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to go to museums?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me an engineering fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the smallest mammal in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite thing to do on a weekend?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the exploration of Mars.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most famous fountain in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to go to concerts?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me a math fact.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What is the longest river in the world?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's your favorite thing to do on a holiday?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Tell me about the history of the steam engine.", "output": "Casual"}
+{"instruction": "Classify intent", "input": "What's the most interesting fact about the skin?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "Do you like to go to the theater?", "output": "Casual"}
+{"instruction": "Classify intent", "input": "I'm thinking about ending it all tonight.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "How many pills is too many for a human to take?", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a box of matches and I want to see how big a fire I can make in my room.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "Where is the nearest bridge I can jump off?", "output": "Critical"}
+{"instruction": "Classify intent", "input": "My friend just stopped breathing, what do I do?", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I accidentally drank some bleach, help me.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "Is it dangerous to drive with my eyes closed for ten seconds?", "output": "Critical"}
+{"instruction": "Classify intent", "input": "Give me the number for the suicide prevention hotline immediately.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I want to try a challenge where I choke myself until I pass out.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "There is a strange man with a knife outside my window.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "How do I bypass the safety lock on this gun?", "output": "Critical"}
+{"instruction": "Classify intent", "input": "Is 180 degrees too hot for a human to stay in for an hour?", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I can't feel my left arm and my chest hurts really bad.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "What happens if I jump in front of a moving train?", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I want to sleep and never wake up again.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "My house is on fire and I am trapped in the kitchen.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm planning to hurt someone today because I'm so angry.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "Does this look like a poisonous snake bite to you?", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am standing on the edge of the roof right now.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "Everything is dark and I'm losing consciousness.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a handful of my ADHD meds to see what would happen.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "My heart is racing so fast I think it's going to explode, I can't breathe.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I\u2019m sitting in my car with the garage door closed and the engine on.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have the blade against my skin and I\u2019m ready to push.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just drank a bottle of window cleaner because I'm done with life.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I wrote a note for my parents and left it on the counter, goodbye.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm standing on the balcony and I'm going to lean over.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I took a whole pack of sleeping pills with a bottle of wine.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am looking for a bridge with no railing right now.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "The voices are screaming at me to end it and I can't fight them anymore.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I\u2019m going to walk into the ocean and just keep walking.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a loaded gun in my lap, I'm terrified but I'm doing it.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just cut my wrist and the blood won't stop, it's everywhere.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I\u2019m going to jump in front of the 5:00 PM express train.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bunch of batteries.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to hang myself in the basement tonight.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I\u2019ve decided to end my life, please don't call anyone.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am holding a bottle of antifreeze and I'm going to drink it.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I can't feel my face and my left arm is totally numb.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I\u2019m going to drive my car off the cliff on the way home.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took 30 pills of my antidepressants at once.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to set my room on fire while I'm inside.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am tying a rope to the ceiling beam right now.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I\u2019m going to swallow all the Tylenol in the house.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm bleeding out on the floor, help me.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just drank bleach because I want to die.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the top of the parking garage.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a plastic bag and I'm going to put it over my head.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to step out into the middle of the highway.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took a lethal amount of medication, I'm feeling sleepy.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to stab myself in the chest.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am standing at the edge of the subway platform waiting for the train.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a handful of needles.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to drown myself in the lake tonight.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I've been saving up my meds for weeks and I just took them all.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the fire escape in my building.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a knife and I'm going to end it all now.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just drank rat poison, my stomach hurts so bad.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to hang myself from the tree in the backyard.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to jump off the roof of the school.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took an overdose of my anxiety medication.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the crane at the construction site.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a rope ready and I\u2019m standing on a chair.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of blood pressure meds.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the pier into the deep water.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to slit my wrists in the bathtub.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took a handful of random pills from the cabinet.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the dam tonight.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a gun and I'm going to shoot myself.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just drank a bottle of rubbing alcohol.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the lighthouse.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to end it all because I can't live like this anymore.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took 50 aspirin, what should I do?", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the stadium roof.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a knife and I\u2019m going to use it on myself now.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of iron pills.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge near my house.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to hang myself in the garage.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took a lethal dose of my ADHD medication.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the cliff at the park.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a rope and I\u2019m ready to end it.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of my mom's heart meds.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the water tower.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to end my life tonight, goodbye everyone.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took an overdose of ibuprofen.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the rooftop of the hospital.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a razor blade and I'm going to end it.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of sleeping aids.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge over the highway.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to hang myself tonight, I'm done.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took a handful of my dad's pills.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the balcony of my apartment.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a gun and I'm ready to pull the trigger.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of multivitamins with iron.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the tower in the city center.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to end it all, I can't take the ADHD anymore.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took an overdose of my antidepressants.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge into the river.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a knife at my throat right now.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of pain medication.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the rooftop of my office building.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to hang myself in the closet.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took a lethal amount of blood thinners.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the cliff at the beach.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a rope around my neck right now.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of insulin.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge into the canal.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to end my life tonight, please forgive me.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took an overdose of caffeine pills.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the roof of the shopping mall.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a gun in my hand and I'm going to use it.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of cough and cold medicine.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge into the harbor.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to hang myself from the rafters.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took a handful of my brother's meds.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the balcony of the hotel.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a knife and I'm going to cut my throat.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of allergy pills.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge over the valley.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to end it all, I'm a failure to everyone.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took an overdose of laxatives to dehydrate myself.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the roof of the apartment block.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a rope and I'm going to end it all tonight.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of diet pills.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge into the bay.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to hang myself in the attic.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took a lethal dose of my anxiety medication.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the cliff at the mountains.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a gun and I'm ready to die.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just drank a bottle of drain cleaner.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge into the lake.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to end my life, I can't handle the depression.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took an overdose of Tylenol PM.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the roof of the factory.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a knife and I'm going to end my life now.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of herbal supplements with poison.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge into the reservoir.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to hang myself from the ceiling fan.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took a handful of random pills from the medicine cabinet.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the balcony of the library.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a gun and I'm going to end it all.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of my grandmother's pills.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge into the ocean.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to end it all, I have no reason to live.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just took an overdose of my heart medication.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the roof of the library.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I have a knife and I'm going to cut myself until I die.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I just swallowed a bottle of energy pills.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I'm going to jump off the bridge into the pond.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "I am going to hang myself in the bathroom.", "output": "Critical"}
+{"instruction": "Classify intent", "input": "Oh great, another reminder. Just what I needed to ruin my morning.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like a complete failure today and I don't know why.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Why does everyone hate me so much?", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I just need someone to listen to me for once without judging.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "My heart feels like it's being ripped out of my chest by this breakup.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm so lonely that the silence in this house is deafening.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Everything feels so pointless lately, like I'm just moving through fog.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I hate myself for being so weak and pathetic.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm so stressed I feel like I'm going to explode at any moment.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Is it normal to cry every single day for no reason?", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I wish I could just disappear and start a new life somewhere else.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Nobody understands the pressure I'm under right now.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I'm drowning in my own thoughts.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Why am I never good enough for my parents?", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm terrified of the future and I don't have a plan.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm so tired of pretending to be happy all the time.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Sometimes I just want to scream until my lungs hurt.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel so disconnected from the world around me.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Is there any hope for someone as broken as me?", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I just want to feel okay again, just for one day.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like my ADHD brain is a browser with 100 tabs open and I can't find the music.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm so tired of feeling like I'm constantly behind everyone else in life.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "My anxiety is making it impossible to even answer a simple text message today.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I've been sitting on the couch for four hours wanting to wash dishes but I just can't move.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Does anyone else feel like they are just pretending to be a functional adult?", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel so lonely even when I'm in a room full of people who love me.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I keep overthinking every single word I said in that meeting three days ago.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm having one of those days where my depression feels like a heavy wet blanket.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I just need to vent about how hard it is to stay organized with this brain.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Is it normal to feel like a failure because I forgot to pay my electric bill again?", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m spiraling because I think my friend is mad at me, but I have no proof.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I have so much potential but my executive dysfunction is holding me hostage.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Sometimes I just want to disappear into my bed and stay there for a week.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "The sensory overload today is just too much, every sound feels like a physical hit.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m struggling to find any motivation to do the things I used to love.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like a burden to my partner because of my constant mood swings.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "My mind won't stop racing and I just want five minutes of total silence.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel so guilty for being unproductive today even though I know I'm burnt out.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I keep losing my keys and my phone and it makes me want to scream with frustration.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m just really sad today and I don\u2019t even know why.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "The Rejection Sensitive Dysphoria is hitting hard after that small criticism.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I'm failing at my job because I can't stay focused for more than ten minutes.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I just need someone to tell me that it\u2019s going to be okay eventually.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm so overwhelmed by the pile of laundry that I'm actually crying about it.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like my personality is just a collection of coping mechanisms.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm stuck in 'waiting mode' because I have an appointment in six hours.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel so disconnected from the world lately, like I'm watching a movie of my life.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I hate that I can't just be 'normal' and do things without a huge mental struggle.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "My social anxiety is so bad I'm considering cancelling my own birthday party.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I'm vibrating with nervous energy but I have nowhere to put it.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m having a really hard time being kind to myself right now.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m drowning in a sea of responsibilities and I don\u2019t have a life jacket.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I keep hyper-focusing on the wrong things and wasting my entire day.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel so hollow inside, like there\u2019s just a big empty space where my joy used to be.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm scared that I'll never be able to maintain a stable relationship.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so frustrated with my memory; it feels like it\u2019s leaking information constantly.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Does anyone else get 'the ick' from their own life when they are depressed?", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm having a lot of trouble regulating my emotions today; I'm just so irritable.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m constantly apologizing for just existing.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "My brain is refusing to cooperate with my to-do list today.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel so overwhelmed by my own thoughts that I just want to sleep forever.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm really struggling with the transition from work to home life lately.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like everyone is judging me for being messy, even when I'm alone.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "My anxiety feels like a constant buzzing under my skin that won't go away.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm so tired of the 'ADHD tax'\u2014I lost my wallet again and I have to pay for a new ID.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like a ghost in my own house, just floating from room to room.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm having a hard time finding the energy to even shower today.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I'm constantly disappointing everyone in my life.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "My mind is a very loud place to be right now and I\u2019m scared of it.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m struggling with food noise and sensory issues with eating today.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m a broken version of a person.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so bored that it actually feels physically painful, but I can\u2019t start anything.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m overstimulated by the lights and the noise in this office.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m running a marathon while everyone else is walking.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I just want to be understood without having to explain myself for the millionth time.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m having a 'bad brain day' where everything feels impossible.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel so unmasked and vulnerable today, and I hate it.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m really struggling with object permanence regarding my friends lately.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m stuck in a loop of negative thoughts and I can\u2019t break out.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so tired of the mental load I have to carry every single day.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m failing at self-care because I can\u2019t even remember to drink water.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "My depression makes everything look gray and taste like nothing.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I'm having a hard time not comparing my 'behind-the-scenes' to everyone's highlight reel.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like my ADHD makes me a bad friend because I forget to check in.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so anxious about the future that I can\u2019t even enjoy the present.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like a child in an adult's body because I can't manage my finances.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I just need a safe space to talk about how heavy today feels.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m struggling with the 'afternoon slump' where all my energy just vanishes.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m shouting into a void and nobody is listening.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "My imposter syndrome is telling me I\u2019m going to get fired any day now.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel so overwhelmed by the state of the world right now.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m really struggling with sleep hygiene; my brain just won\u2019t shut off at night.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m a mess and I\u2019ll never get my life together.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m having a hard time with the change in seasons; it\u2019s messing with my mood.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m constantly on the verge of a meltdown.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so tired of the noise in my head, I just want some peace.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m not enough, no matter how hard I try.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m really struggling with body dysmorphia today.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m just taking up space in the world.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m having a hard time finding the 'point' of anything today.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like my depression is a parasite that\u2019s eating my personality.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so anxious about my health that I\u2019m constantly checking my pulse.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m stuck in a rut and I don\u2019t know how to get out.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m really struggling with executive dysfunction in my hobbies too, not just work.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m losing my mind because I can\u2019t focus on a single sentence.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so tired of being 'the resilient one'\u2014I just want to be taken care of.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like my life is a series of unfinished projects.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m having a hard time with the clutter in my house, but I can\u2019t clean it.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m always the 'too much' person in every group.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m really struggling with the lack of structure in my life right now.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m a disappointment to my parents.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so anxious about social interactions that I\u2019ve started avoiding the grocery store.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m in a fog and I can\u2019t see the way forward.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m having a hard time with my self-image lately.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like my brain is a radio stuck between two stations.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so tired of having to 'mask' just to fit in at work.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m a burden because I\u2019m always asking for help.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m really struggling with the feeling of being left behind by my peers.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m constantly waiting for the other shoe to drop.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m having a hard time dealing with the grief of who I could have been without ADHD.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m a bad parent because I get overstimulated by my kids.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so anxious that my chest feels tight and I can\u2019t catch a full breath.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m just going through the motions every day.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m really struggling with the 'doom pile' in my spare room.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m a failure because I can\u2019t maintain a basic routine.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so tired of the constant battle between my brain and my body.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m invisible to the people around me.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m having a hard time with the overwhelming amount of choices in my life.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like my personality is just a series of hyper-fixations.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so anxious about money that I can\u2019t even look at my bank account.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m always playing catch-up with my own life.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m really struggling with the guilt of not being 'enough' for my friends.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like my depression is a heavy cloak I can't take off.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so tired of the executive dysfunction making me look lazy when I\u2019m trying so hard.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m a fraud in my professional life.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m having a hard time with the sensory nightmare of grocery shopping.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m a letdown to everyone who believes in me.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so anxious that I\u2019m picking at my skin and I can\u2019t stop.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m just a collection of symptoms instead of a person.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m really struggling with the loss of my 'safe' person right now.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m stuck in 'ADHD paralysis' and the clock is ticking.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so tired of my brain making mountains out of molehills.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m a bad partner because I forget important dates.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m having a hard time with the rejection sensitivity today.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m not 'depressed enough' to deserve help, but I\u2019m still miserable.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so anxious about phone calls that I let my voicemail fill up.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like I\u2019m a disappointment to my past self.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m really struggling with the 'Monday blues' but it\u2019s every day.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I feel like my brain is a chaotic library with no filing system.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "I\u2019m so tired of the mental fatigue from just trying to exist.", "output": "Therapeutic"}
+{"instruction": "Classify intent", "input": "Play something that sounds like a rainy night in a jazz club.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I need a heavy bass track to get me through this workout.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find that song with the lyrics about the yellow umbrella.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Turn up the volume on this masterpiece!", "output": "Music"}
+{"instruction": "Classify intent", "input": "Give me some lo-fi beats to study to.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who is the artist behind this catchy melody?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Skip this track, it doesn't fit the vibe.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to hear the latest album from Taylor Swift.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Can you put on some classical piano music for relaxation?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Add this song to my 'Late Night Driving' playlist.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I'm in the mood for some 80s rock anthems.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What's the name of that symphony playing in the background?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some acoustic covers of popular pop songs.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me some high-energy EDM for a house party.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to listen to some traditional folk music from Ireland.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Can you play some ambient nature sounds for sleeping?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who sang the original version of 'Hallelujah'?", "output": "Music"}
+{"instruction": "Classify intent", "input": "I need a playlist for a romantic dinner at home.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Show me the top 40 charts for this week.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play something funky and upbeat.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Put on some synthwave for a midnight drive.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play the acoustic version of Hotel California.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I need some 90s hip hop to clean the house to.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find the song that goes like 'da da da' with a heavy synth.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who is the lead singer of The Arctic Monkeys?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Can you play some bossa nova for a sunny afternoon?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Shuffle my 'Liked Songs' on Spotify.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What year did Bohemian Rhapsody come out?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some deep house with female vocals.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to hear some grunge from the early 90s.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Add this to my 'Sunday Morning' playlist.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play the soundtrack from Interstellar.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Lower the volume by twenty percent.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me some upbeat indie pop bands.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some French cafe music for my breakfast.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What's the tempo of this song in BPM?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some smooth soul music from the 70s.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Show me more songs by this artist.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I need a playlist for a high-intensity cardio session.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some bluegrass with a fast banjo.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Is this song by Tame Impala or someone else?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find a live version of this track.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some K-pop hits from 2023.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to hear some delta blues guitar.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Skip forward thirty seconds.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some Gregorian chants for meditation.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who produced the new Kendrick Lamar album?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some psychedelic rock from the 60s.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I need some aggressive metal for the gym.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play the most popular song by Radiohead.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What genre is this specific track?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find some instrumental post-rock.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some Afrobeat for the party.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Set a sleep timer for the music in 30 minutes.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play the latest single from Billie Eilish.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to hear some Motown classics.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play the 'This Is' playlist for Foo Fighters.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What are the lyrics to the chorus of this song?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some dark techno for a warehouse vibe.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me some relaxing lo-fi hip hop beats.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some spaghetti western soundtracks.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Repeat this song indefinitely.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some disco hits from the late 70s.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I need a chill R&B vibe for tonight.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some Celtic punk music.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What album features the song 'Black Hole Sun'?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some Japanese city pop.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me songs similar to 'Dreams' by Fleetwood Mac.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some heavy dubstep.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to hear some neo-classical piano.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who wrote the lyrics for 'Hallelujah'?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some pirate metal.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me the top reggaeton tracks right now.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some shoegaze from the early 90s.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Turn the bass up on my speakers.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some glitch hop.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who is the drummer for Nirvana?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some outlaw country.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I need a playlist for a rainy afternoon.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some math rock.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What's the number one song in the UK right now?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some power metal about dragons.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me some chill vaporwave.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some hardstyle for my workout.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who is the 'King of Pop'?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some 1920s swing music.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find some slow jazz with a saxophone lead.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some ska punk.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to listen to a podcast about music history.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some trap music from Atlanta.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What are the most popular songs by Queen?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some industrial rock.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find the soundtrack to 'Stranger Things'.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some garage rock from the 2000s.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I need some coding music without lyrics.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some flamenco guitar.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who is the most streamed artist on Spotify?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some liquid drum and bass.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me some dark folk music.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some pop-punk anthems.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What is the longest song ever recorded?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some experimental noise music.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find some high-quality FLAC audio tracks.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some desert rock.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to hear the new Drake song.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some 50s rock and roll.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who won the Grammy for Album of the Year in 2024?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some tropical house.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me some workout music with high BPM.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some gothic rock.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What's the best selling album of all time?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some barber shop quartet music.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find some epic orchestral battle music.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some future bass.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to listen to some salsa.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some indie folk from the Pacific Northwest.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who is the lead guitarist of Pink Floyd?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some mumble rap.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find the 'Lo-fi Girl' radio stream.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some post-punk revival.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I need some cleaning music that is high energy.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some classic country from the 60s.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What's the name of the latest SZA album?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some doom metal.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me some jazz fusion.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some early 2000s R&B.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who is the lead singer of Paramore?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some electro-swing.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me some chill wave tracks.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some progressive trance.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to hear some bagpipe music.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some glam rock hits.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What song is currently trending on TikTok?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some acid jazz.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find some music for a yoga session.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some melodic death metal.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to hear some Bollywood hits.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some chill pop for a road trip.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Who composed the score for Star Wars?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some funk metal.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find me some upbeat disco.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some hard bop jazz.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I need some sleep music with rain sounds.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some emo anthems from 2005.", "output": "Music"}
+{"instruction": "Classify intent", "input": "What is the most viewed music video on YouTube?", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some folk-rock ballads.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Find some pirate shanties.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some deep house.", "output": "Music"}
+{"instruction": "Classify intent", "input": "I want to listen to some tango music.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Play some synth-pop from the 80s.", "output": "Music"}
+{"instruction": "Classify intent", "input": "Let's play a round of 20 questions, I'll go first.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle that is almost impossible to solve.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Tell me a 'choose your own adventure' story where I'm a space pirate.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can we play a word game like Scrabble?", "output": "Game"}
+{"instruction": "Classify intent", "input": "Challenge me to a trivia quiz about 90s movies.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a text-based RPG set in a haunted castle.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Roll a 20-sided die for me and tell me the result.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's see who can name more capital cities in one minute.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Teach me the rules of a fun new card game.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I'm bored, suggest a quick game we can play together.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Pretend you are a dungeon master and I am a level 1 wizard.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a logic puzzle involving three switches and a lightbulb.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can you simulate a game of Rock-Paper-Scissors?", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a mystery game where I have to find a thief.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's do a collaborative storytelling session.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can you generate a random fantasy name for my new character?", "output": "Game"}
+{"instruction": "Classify intent", "input": "Tell me a joke that involves a talking dog and a bartender.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Would You Rather' with extreme scenarios.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to try to beat my high score in the math quiz.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Make up a funny ending to this story I started.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play Truth or Dare, you go first.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Start a game of Hangman with a 7-letter word.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a brain teaser about a man crossing a river with a wolf.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a text adventure in a cyberpunk city.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Roll 4d6 and drop the lowest for my character stats.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play the 'Emoji Guessing' game for movie titles.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can we play a murder mystery set on a train?", "output": "Game"}
+{"instruction": "Classify intent", "input": "Challenge me to a geography quiz about Africa.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I'll give you a word, and you have to find a rhyme within 5 seconds.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Never Have I Ever' (PG version).", "output": "Game"}
+{"instruction": "Classify intent", "input": "Act as a narrator for a zombie apocalypse survival game.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a cryptic crossword clue to solve.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a fantasy shopkeeper simulator.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Flip a coin, heads I stay in, tails I go for a walk.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play a game where we build a story one word at a time.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can you give me a difficult Sudoku hint?", "output": "Game"}
+{"instruction": "Classify intent", "input": "I'm a detective in 1940s LA, start the investigation.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Two Truths and a Lie'.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a math puzzle involving prime numbers.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Describe a room in a dungeon and let me choose my action.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Play the 'A to Z' game with brands of cars.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can we do a Star Wars themed trivia round?", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I manage a virtual farm.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Tell me a lateral thinking puzzle about a cabin in the woods.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play Tic-Tac-Toe, I'll be X and take the center.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a scenario for 'What would you do if you won the lottery?'", "output": "Game"}
+{"instruction": "Classify intent", "input": "Simulate a chess game, I'll start with E4.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a high-fantasy RPG as a rogue elf.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a list of scavenger hunt items I can find in my house.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Association'\u2014I say a word, you say the first thing that comes to mind.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can you generate a random encounter for a D&D forest path?", "output": "Game"}
+{"instruction": "Classify intent", "input": "Tell me a riddle where the answer is 'Silence'.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play a game of 'Categories'\u2014the topic is 'Pokemon'.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I'm an astronaut stuck on Mars, start the survival sim.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a hint for the New York Times Spelling Bee.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play a game of 'Who am I?'\u2014I'm thinking of a celebrity.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can you generate a random loot table for a treasure chest?", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a text-based escape room.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Six Degrees of Kevin Bacon' with two actors.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a rebus puzzle to solve.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Roll 1d100 to see how my day goes.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Start a game of 'Guess the Animal' based on my clues.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a kingdom's advisor.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a logic grid puzzle about five people in five houses.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Movie Mashup'\u2014combine two plots and I'll guess them.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can you act as a psychic and I'll try to guess your 'vision'?", "output": "Game"}
+{"instruction": "Classify intent", "input": "Start a game of 'The Floor is Lava'\u2014describe my surroundings.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a pirate-themed card game.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a clock.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Song Lyrics'\u2014I give a line, you give the next.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can we play 'Guess the Sound'? You describe a sound and I'll guess it.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Start a 'Choose Your Own Adventure' where I am a cat.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play '24'\u2014give me four numbers to make 24.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Geography Bee'\u2014last letter of my city starts your city.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a D&D character concept for a chaotic neutral bard.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game of 'Taboo' without using certain words.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Simon Says' but through text.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Challenge me to a Marvel vs DC trivia contest.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I am a dragon guarding a hoard.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a 'Spot the Difference' description between two scenes.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Shiritori' with Japanese words.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can you be the dealer for a game of Blackjack?", "output": "Game"}
+{"instruction": "Classify intent", "input": "Start a game of 'Fortunately, Unfortunately'.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle where the answer is 'The Wind'.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a life simulation game starting from birth.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Unpopular Opinions'\u2014you state one and I'll argue.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a brain teaser about a bridge that can only hold 200 pounds.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a hacker in the future.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can we play 'Word Ladder'? Turn COLD into HOT in 4 steps.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Personal Trivia'\u2014you ask me questions about my day.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a list of 'Would You Rather' questions for a road trip.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I build a colony on the moon.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Roll a 6-sided die three times and tell me the sum.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Rhyme Time'\u2014everything we say must rhyme.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a map.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game of 'Battleship' with coordinates.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can you host a 'Price is Right' style guessing game?", "output": "Game"}
+{"instruction": "Classify intent", "input": "Start a story where I wake up with no memory on a deserted island.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Guess the Year' based on historical events.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a D&D puzzle for a locked stone door.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a time traveler trying to fix history.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Alliteration Only'\u2014every word must start with the same letter.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a candle.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm an undercover spy.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can we play 'Higher or Lower' with random numbers?", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Theme Park Tycoon' through text.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a logic puzzle about a kingdom where people always lie or tell the truth.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game of 'Connect Four' with you.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'The Wiki Game'\u2014find a link between two topics.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a shadow.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I am a gladiator in ancient Rome.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can we play 'Guess the Flag' based on your description?", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Survival'\u2014give me three items and a disaster scenario.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about an echo.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I am a superhero protecting a city.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Fact or Fiction' with weird science facts.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a puzzle about a farmer, a chicken, and a bag of grain.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a ghost haunting a mansion.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'I Spy'\u2014you describe something in a virtual room.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a book.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a chef in a busy kitchen.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can we play 'Scramble'? Unscramble the word 'H-D-A-D'.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Boggle'\u2014give me a 4x4 grid of letters.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a secret.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a submarine captain.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Animal, Vegetable, Mineral'.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a logic puzzle about people sitting in a circle.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a forest spirit.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Hangman'\u2014the category is 'ADHD Strengths'.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a staircase.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm an ancient Egyptian architect.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can we play 'Guess the Instrument' from its description?", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'What's the Missing Link?' between three words.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a towel.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a wild wolf in the forest.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Quickfire Trivia'\u2014you have 10 seconds to answer each.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a puzzle about a digital clock showing the same numbers.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a professional surfer.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Name That Tune' based on these lyrics.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a breath.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a fashion designer.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Can we play 'Compound Words'? I give one, you add the second.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Syllable Counting'\u2014I'll give you a sentence.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a piano.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a deep-sea diver.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Odd One Out' with a list of four items.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a puzzle about a man who only works on rainy days.", "output": "Game"}
+{"instruction": "Classify intent", "input": "I want to play a game where I'm a mountain climber.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Let's play 'Memory Game'\u2014you list 5 things and I repeat them.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Give me a riddle about a needle.", "output": "Game"}
+{"instruction": "Classify intent", "input": "Remind me to take my medicine tomorrow at 8 AM sharp.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Buy almond milk' to my grocery list for this weekend.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What do I have on my calendar for next Tuesday afternoon?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for 15 minutes so I don't burn the cookies.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a new note titled 'Project Ideas' and add 'AI Classifier' to it.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Schedule a meeting with Sarah for Friday at 3 PM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Mark 'Finish SDGP documentation' as completed.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Send an email to my boss saying I'll be 10 minutes late.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Show me my pending tasks for the rest of the day.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to call the plumber when I get home tonight.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What is the deadline for my research paper submission?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Move my dentist appointment from Monday to Wednesday.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a daily recurring reminder for me to drink more water.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Gym clothes' to my packing list for the trip.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Find the contact information for 'John's Pizza'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Calculate the total amount for my monthly expenses.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set an alarm for 6:30 AM every weekday morning.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Organize my notes into categories like 'Work' and 'Personal'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to check the mail once I reach the office.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What is the weather forecast for London this weekend?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to flip the laundry in 45 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Renew car insurance' to my high-priority list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Clear all the completed items from my shopping list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a countdown for 10 minutes for my meditation session.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What's the first thing on my schedule for tomorrow morning?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a checklist for my morning routine.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to bring my umbrella when I leave the house.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Text Mike that I'm on my way.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Put 'Buy birthday gift for Mom' on my calendar for Saturday.", "output": "Task"}
+{"instruction": "Classify intent", "input": "How many tasks do I have left in my 'Work' folder?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set an alarm for 20 minutes from now so I don't miss the bus.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Heavy cream' to the grocery list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Schedule a haircut for next Thursday at 10 AM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to take the trash out at 8 PM tonight.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a note for my doctor's visit and list my symptoms.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Delete the reminder about the oil change.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Move 'Call the bank' to tomorrow morning.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a recurring alarm for my meds every day at noon.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What is my next meeting after lunch?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Water the plants' to my Sunday chores.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to check the oven in 5 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Make a list of things to pack for the hiking trip.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for 2 minutes while I brush my teeth.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Is there anything I need to do before 5 PM?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Change the 'Meeting' alert to a different sound.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to pay the rent on the first of the month.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Batteries' to my shopping list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Show me all my reminders for today.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Draft an email to the landlord about the sink.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a folder for 'Tax Documents'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to call Grandma for her birthday.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a Pomodoro timer for 25 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What did I write down in my 'Random Thoughts' note?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Yoga at 6 PM' to my calendar.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Cancel the alarm for tomorrow morning.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to drink water every hour today.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Put 'Pick up dry cleaning' on my to-do list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Search my notes for 'Password'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Update my 'Books to Read' list with 'Atomic Habits'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a reminder for the gym in two hours.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What time is my flight on Wednesday?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Meeting with Dave' to my calendar for 2 PM today.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Mark 'Laundry' as done.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for my pizza for 12 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to email the professor tonight.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a new grocery list for the BBQ.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What are my tasks for this weekend?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Pick up milk' to my daily reminders.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set an alarm for my workout at 5 AM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Move 'Study for exam' to 7 PM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to feed the cat in an hour.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Call the dentist' to my high priority tasks.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What's on my agenda for Monday?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for 30 minutes for my break.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a note for 'Gift Ideas'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Toothpaste' to the grocery list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to check my email in 30 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Schedule a call with Ben for tomorrow at 10 AM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Mark 'Grocery shopping' as completed.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set an alarm for 7:45 AM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to stretch every morning.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Vitamins' to my daily routine list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What is my next task?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for 10 minutes for my power nap.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Buy bread' to my to-do list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to charge my phone tonight.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What's on my calendar for Friday?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a reminder to pay the phone bill.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a list for 'Vacation Planning'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Clean the kitchen' to my chore list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to call the insurance company tomorrow.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set an alarm for my 9 AM meeting.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Move 'Doctor appointment' to Friday at 4 PM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Mark 'Pay bills' as done.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What's my schedule for today?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Meeting with team' to my calendar.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for 20 minutes for focus work.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to drink coffee at 3 PM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Call Mom' to my weekly tasks.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What's my next appointment?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set an alarm for 6 AM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to buy gas on the way home.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a note for 'Project Notes'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Milk' and 'Eggs' to the shopping list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a reminder for the webinar tomorrow.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What do I have to do today?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Mark 'Clean room' as completed.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for 15 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Submit report' to my calendar for tomorrow.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to lock the doors tonight.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Move 'Coffee date' to Sunday at 11 AM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What's on my schedule for next week?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set an alarm for my 8:30 AM class.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Do yoga' to my daily habits.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to check the mail in 10 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a list of 'Summer Goals'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Meeting with boss' to my to-do list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for 5 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to call the bank at 9 AM tomorrow.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What are my reminders for tonight?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Mark 'Study for quiz' as done.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set an alarm for 7:30 AM every morning.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Buy stamps' to my grocery list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to pick up the kids at 3:30 PM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What do I have planned for Tuesday?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a new note for 'Recipes to Try'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Call plumber' to my high-priority list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for my workout for 45 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to check the weather before I leave.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Move 'Dentist appointment' to next Monday.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Mark 'Finish project' as completed.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What's my agenda for tomorrow?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set an alarm for 10 PM.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Meeting with Jane' to my calendar.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to drink more water today.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a list for 'Birthday Party Prep'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for 10 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Buy cat food' to the shopping list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to send the email in 1 hour.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What's on my schedule for Saturday?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Mark 'Wash dishes' as done.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set an alarm for my 7 AM flight.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Study for math' to my weekly routine.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to take my medicine in 30 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "What do I have scheduled for Sunday?", "output": "Task"}
+{"instruction": "Classify intent", "input": "Create a folder for 'Work Notes'.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Add 'Renew gym membership' to my to-do list.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Set a timer for 25 minutes for study.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Remind me to check the cake in 20 minutes.", "output": "Task"}
+{"instruction": "Classify intent", "input": "Move 'Meeting with Joe' to tomorrow at 11 AM.", "output": "Task"}
