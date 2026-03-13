@@ -2,7 +2,7 @@
 
 ## Overview
 
-BEAN is a real-time voice pipeline backend for a companion robot serving teenagers (ages 13–17). A robot connects over WebSocket, streams audio, and receives spoken responses — all within a latency budget tight enough for natural conversation.
+BEAN is a real-time voice pipeline backend for a companion . A robot connects over WebSocket, streams audio, and receives spoken responses — all within a latency budget tight enough for natural conversation.
 
 The backend is built on **Google ADK** (Agent Development Kit) with **FastAPI** as the HTTP/WebSocket server, deployed on **Google Cloud Run**.
 
@@ -137,7 +137,7 @@ External APIs
 
 ---
 
-## Why BaseAgent Instead of Standard ADK Workflow Agents
+## Why BaseAgent Instead of Standard ADK Workflow Agents?
 
 The real-time voice pipeline requires a persistent WebSocket connection and a custom event loop that:
 
