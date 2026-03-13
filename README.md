@@ -1,6 +1,6 @@
-# BEAN AI — Backend System v4.0
+# BEAN AI — Backend System v1.0
 
-BEAN is an AI-powered companion robot for teenagers (ages 13–17). Real-time voice pipeline built on Google ADK with streaming STT, emotion detection, multi-agent routing, and TTS.
+BEAN is an AI-powered companion. Real-time voice pipeline built on Google ADK with streaming STT, emotion detection, multi-agent routing, and TTS.
 
 ## Architecture
 
