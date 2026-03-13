@@ -1,0 +1,5 @@
+# Treat all text files properly
+* text=auto
+
+# Force Markdown files to always use LF in repo
+*.md text eol=lf
