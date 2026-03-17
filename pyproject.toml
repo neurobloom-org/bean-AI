@@ -54,6 +54,8 @@ addopts = "--cov=. --cov-report=term-missing"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "TCH"]
 ignore = ["E501"]
 
@@ -65,3 +67,13 @@ ignore_missing_imports = true
 # ── Enforce CPU-only PyTorch wheels to prevent 2GB CUDA downloads ──
 [tool.pip]
 extra-index-url = "https://download.pytorch.org/whl/cpu"
+
+# ── Tell hatchling exactly which folders to package ──
+[tool.hatch.build.targets.wheel]
+packages = [
+    "agents",
+    "api",
+    "background",
+    "services",
+    "shared"
+]
