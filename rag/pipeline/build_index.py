@@ -48,3 +48,34 @@ def is_quality_response(text):
     if len(text) > 8000: # too long - Outlier wall of text
         return False
     return True
+
+# ─ Topic to Framework Mapping ─
+# Maps CounselChat topics to CBT / MBCT / DCT frameworks
+
+TOPIC_TO_FRAMEWORK = {
+
+    # CBT — structured thought and behaviour change
+    "depression":        "cbt",
+    "anxiety":           "cbt",
+    "behavioral-change": "cbt",
+    "self-esteem":       "cbt",
+    "stress":            "cbt",
+    "anger-management":  "cbt",
+    "eating-disorders":  "cbt",
+    "substance-abuse":   "cbt",
+    "sleep-improvement": "cbt",
+
+    # MBCT — mindfulness and acceptance
+    "trauma":            "mbct",
+    "grief-and-loss":    "mbct",
+    "self-harm":         "mbct",
+    "spirituality":      "mbct",
+
+    # DCT — compassion and relationships
+    "relationships":     "dct",
+    "intimacy":          "dct",
+    "family-conflict":   "dct",
+    "marriage":          "dct",
+    "parenting":         "dct",
+    "domestic-violence": "dct",
+}
