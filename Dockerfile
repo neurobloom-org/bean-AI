@@ -7,25 +7,23 @@
 # 3. Production: Minimal, secure runtime for deployment.
 
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
+# ── Stage 1: Builder ─────────────────────────────────────────────────────────
 FROM python:3.12-slim AS builder
 
-# Set working directory for build stage
 WORKDIR /build
 
-# Install essential build tools and libraries required for PyTorch/OpenMP
-# libgomp1 is critical for OpenMP (used by PyTorch/Wav2Vec2)
+# libgomp1 is required for PyTorch/OpenMP, otherwise wav2vec2 will crash
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgomp1 \
-    && rm -rf /var/lib/apt/lists/*   # Clean apt cache to reduce image size
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy only pyproject.toml for dependency installation (leverages Docker cache)
-COPY pyproject.toml .
+# Copy all project files so the builder can see the source code directories
+COPY . .
 
-# Install dependencies in CPU-only mode to avoid huge CUDA wheels
-# --target installs into /deps so it can later be copied into runtime images
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu ".[dev]" --target /deps
+# Install 'uv' (the ultra-fast Rust resolver) to bypass pip's infinite loops
+RUN pip install uv && \
+    uv pip install --system --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu ".[dev]" --target /deps
 
 # ── Stage 2: Development ──────────────────────────────────────────────────────
 FROM python:3.12-slim AS development
