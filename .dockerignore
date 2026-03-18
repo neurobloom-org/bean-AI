@@ -1,0 +1,37 @@
+# ── Git & Config ──────────────────────────────────────────────────────────────
+.git
+.gitignore
+.dockerignore
+
+# ── Secrets (NEVER bake into image) ───────────────────────────────────────────
+.env
+.env.local
+.env.production
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__
+*.py[cod]
+*.egg-info
+dist
+build
+.venv
+venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+
+# ── IDE & OS ──────────────────────────────────────────────────────────────────
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# ── Docs & Local Caches ───────────────────────────────────────────────────────
+*.md
+!README.md
+docs/
+.github
+models/
+*.pt
+*.bin
+*.safetensors
