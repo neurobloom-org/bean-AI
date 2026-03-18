@@ -79,3 +79,28 @@ TOPIC_TO_FRAMEWORK = {
     "parenting":         "dct",
     "domestic-violence": "dct",
 }
+
+# - Chunking Function -
+
+def make_chunk_text(context, response):
+    """Format a question and answer into one chunk for RAG."""
+    return f"User concern: {context.strip()}\n\nTherapist response: {response.strip()}"
+
+
+def chunk_records(records):
+    """Convert records into chunks ready for embedding."""
+    print("Chunking records...")
+    chunks = []
+    for r in records:
+        text = make_chunk_text(r["context"], r["response"])
+        # Keep chunks under 1200 characters for best embedding quality
+        if len(text) > 1200:
+            text = text[:1200]
+        chunks.append({
+            "text":      text,
+            "framework": r["framework"],
+            "topic":     r["topic"],
+            "source":    r["source"],
+        })
+    print(f"  → {len(chunks)} chunks created")
+    return chunks
