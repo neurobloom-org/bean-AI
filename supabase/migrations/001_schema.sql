@@ -18,36 +18,37 @@ CREATE TABLE sessions (
 );
 
 -- 4. THE BRAIN: 3-Part Long-Term Memory
-CREATE TABLE episodic_memory (
+CREATE TABLE IF NOT EXISTS episodic_memory (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE, 
     content TEXT NOT NULL,
     embedding VECTOR(1536),
     importance_score INT DEFAULT 5,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE semantic_memory (
+CREATE TABLE IF NOT EXISTS semantic_memory (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE, 
     fact_text TEXT NOT NULL,
-    category TEXT, 
+    category TEXT,
     embedding VECTOR(1536),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE procedural_memory (
+CREATE TABLE IF NOT EXISTS procedural_memory (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE, 
     trigger_condition TEXT,
     action_steps TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. RAG Knowledge Base (CBT/DBT)
-CREATE TABLE rag_techniques (
+-- IMPORTANT: Do this for rag_techniques too!
+CREATE TABLE IF NOT EXISTS rag_techniques (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    category TEXT, 
+    category TEXT,
+    technique_name TEXT,
     content TEXT,
     embedding VECTOR(1536)
 );
