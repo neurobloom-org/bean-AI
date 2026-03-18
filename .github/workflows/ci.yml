@@ -58,8 +58,11 @@ jobs:
           cache: "pip"
           cache-dependency-path: "pyproject.toml"
 
+      - name: Upgrade pip
+        run: pip install --upgrade pip
+
       - name: Install dependencies
-        run: pip install -e '.[dev]'
+        run: pip install -e '.[dev]' --extra-index-url https://download.pytorch.org/whl/cpu
 
       - name: Run ruff check (Linting)
         run: ruff check .
@@ -83,8 +86,11 @@ jobs:
           cache: "pip"
           cache-dependency-path: "pyproject.toml"
 
+      - name: Upgrade pip
+        run: pip install --upgrade pip
+
       - name: Install dependencies
-        run: pip install -e '.[dev]'
+        run: pip install -e '.[dev]' --extra-index-url https://download.pytorch.org/whl/cpu
 
       - name: Run mypy
         run: mypy .
@@ -105,8 +111,11 @@ jobs:
           cache: "pip"
           cache-dependency-path: "pyproject.toml"
 
+      - name: Upgrade pip
+        run: pip install --upgrade pip
+
       - name: Install dependencies
-        run: pip install -e '.[dev]'
+        run: pip install -e '.[dev]' --extra-index-url https://download.pytorch.org/whl/cpu
 
       - name: Run pytest with coverage
         run: pytest --cov=. --cov-report=term-missing -v
