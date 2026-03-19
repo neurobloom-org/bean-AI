@@ -55,4 +55,4 @@ class RAGResponse(BaseModel):
     """Schema for RAG retrieval result."""
     chunks:         list[RAGChunk]
     framework_used: Framework
-    
+
