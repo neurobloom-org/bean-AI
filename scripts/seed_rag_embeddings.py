@@ -4,23 +4,23 @@ from typing import List
 from supabase import create_client, Client
 
 # --- CONFIGURATION ---
-# Using specific variable names to ensure Git detects a change from previous versions
 SB_URL: str = os.environ.get("SUPABASE_URL", "your-supabase-url")
 SB_KEY: str = os.environ.get("SUPABASE_SERVICE_KEY", "your-service-role-key")
 
 supabase_client: Client = create_client(SB_URL, SB_KEY)
 
 
+# PEP8: Two blank lines required before top-level functions
 def get_dummy_embedding(text: str) -> List[float]:
     """
     Placeholder for actual OpenAI Embedding.
     Returns a 1536-dimension vector of random small floats for testing.
     """
-    # Using a seeded random for consistency in this version
     random.seed(len(text))
     return [random.uniform(-0.1, 0.1) for _ in range(1536)]
 
 
+# PEP8: Two blank lines required between functions
 def seed_techniques() -> None:
     """
     Seeds the RAG techniques into the Supabase database.
@@ -31,22 +31,22 @@ def seed_techniques() -> None:
         {
             "category": "DBT",
             "technique_name": "4-7-8 Breathing",
-            "content": "Inhale for 4 seconds, hold for 7 seconds, exhale for 8 seconds."
+            "content": "Inhale for 4s, hold 7s, exhale 8s."
         },
         {
             "category": "CBT",
             "technique_name": "Behavioral Activation",
-            "content": "Schedule small, manageable activities for pleasure."
+            "content": "Schedule activities for pleasure."
         },
         {
             "category": "CBT",
             "technique_name": "Thought Challenging",
-            "content": "Identify the negative thought and find a balanced perspective."
+            "content": "Identify negative thoughts and find balance."
         },
         {
             "category": "General",
             "technique_name": "Active Listening",
-            "content": "Bean repeats back what it heard to ensure understanding."
+            "content": "Bean repeats back to ensure understanding."
         }
     ]
 
@@ -54,7 +54,6 @@ def seed_techniques() -> None:
         print(f"  -> Processing: {tech['technique_name']}")
         embedding = get_dummy_embedding(tech['content'])
 
-        # Upsert into the rag_techniques table
         supabase_client.table("rag_techniques").upsert({
             "category": tech['category'],
             "technique_name": tech['technique_name'],
@@ -62,11 +61,12 @@ def seed_techniques() -> None:
             "embedding": embedding
         }, on_conflict="technique_name").execute()
 
-    print("✅ Seeding complete! Check your Supabase dashboard now.")
+    print("✅ Seeding complete!")
 
 
+# PEP8: Two blank lines required before the main block
 if __name__ == "__main__":
     if SB_URL == "your-supabase-url":
-        print("❌ Error: Please set your SUPABASE_URL and SUPABASE_SERVICE_KEY first.")
+        print("❌ Error: Set SUPABASE_URL and SUPABASE_SERVICE_KEY.")
     else:
         seed_techniques()
