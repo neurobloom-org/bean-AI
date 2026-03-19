@@ -1,15 +1,19 @@
 # ── Secrets (CRITICAL) ────────────────────────────────────────────────────────
 .env
 .env.local
+.env.keys
+.env.*.local
 .env.production
 .env.staging
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
 dist/
 build/
+env/
 .venv/
 venv/
 *.pyo
@@ -38,3 +42,7 @@ models/
 *.safetensors
 .supabase/
 *.log
+
+# ── Supabase ──────────────────────────────────────────────────────────────────
+.branches
+.temp
