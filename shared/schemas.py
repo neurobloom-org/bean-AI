@@ -11,8 +11,6 @@ from pydantic import BaseModel
 from shared.enums import AgentType, CrisisLevel, Framework, MoodScore
 
 
-# - Session Schemas -
-
 class SessionCreate(BaseModel):
     """Schema for creating a new session."""
     user_id:    str
@@ -29,16 +27,12 @@ class SessionResponse(BaseModel):
     agent_type:     AgentType
 
 
-# - Mood Schemas ─
-
 class MoodLog(BaseModel):
     """Schema for logging mood to Supabase."""
     user_id:     str
     mood_score:  MoodScore
     timestamp:   datetime
 
-
-# ─ Crisis Schemas ─
 
 class CrisisAlert(BaseModel):
     """Schema for crisis alert logging."""
@@ -47,8 +41,6 @@ class CrisisAlert(BaseModel):
     user_text: str
     notified:  bool = False
 
-
-# ─ RAG Schemas ─
 
 class RAGChunk(BaseModel):
     """Schema for a single RAG chunk."""
@@ -63,4 +55,3 @@ class RAGResponse(BaseModel):
     """Schema for RAG retrieval result."""
     chunks:         list[RAGChunk]
     framework_used: Framework
-
