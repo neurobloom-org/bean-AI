@@ -10,7 +10,6 @@ Flow:
   4. CalendarService uses the token to create/list/delete events
 """
 
-import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 

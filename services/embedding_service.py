@@ -8,7 +8,6 @@ Privacy:
   - Only the resulting vector is persisted (in episodic_memories table)
 """
 
-import asyncio
 import logging
 
 from openai import AsyncOpenAI

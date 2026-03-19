@@ -14,7 +14,6 @@ import logging
 
 from services.embedding_service import get_embedding
 from services.supabase_client import get_service_client
-from shared.exceptions import RAGError
 
 logger = logging.getLogger(__name__)
 
