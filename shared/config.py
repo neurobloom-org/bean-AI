@@ -1,4 +1,4 @@
-"""BEAN AI v5 — Privacy-First Configuration."""
+"""BEAN AI v1 — Privacy-First Configuration."""
 
 from pydantic_settings import BaseSettings
 
@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     # ── ESP32 WebSocket ───────────────────────────────────────────────────────
     ws_ping_interval_seconds: int = 20
     ws_max_audio_frame_bytes: int = 65_536
+
+    # ── Frontend / OAuth ──────────────────────────────────────────────────────
+    frontend_base_url: str = "http://localhost:3000"
+    cookie_domain: str | None = None
+    oauth_state_secret: str = ""
 
     # ── Google OAuth (Calendar) ───────────────────────────────────────────────
     google_oauth_client_id: str = ""
