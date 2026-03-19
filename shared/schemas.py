@@ -10,6 +10,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from shared.enums import AgentType, CrisisLevel, Framework, MoodScore
 
+
 class SessionCreate(BaseModel):
     """Schema for creating a new session."""
     user_id:    str
@@ -54,3 +55,4 @@ class RAGResponse(BaseModel):
     """Schema for RAG retrieval result."""
     chunks:         list[RAGChunk]
     framework_used: Framework
+    
