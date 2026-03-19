@@ -22,7 +22,7 @@ def seed_techniques() -> None:
     Added '-> None' to satisfy strict type checking (mypy).
     """
     print("🌱 Starting RAG seeding...")
-    
+
     techniques = [
         {
             "category": "DBT",
@@ -49,7 +49,7 @@ def seed_techniques() -> None:
     for tech in techniques:
         print(f"  -> Processing: {tech['technique_name']}")
         embedding = get_dummy_embedding(tech['content'])
-        
+
         # Upsert into the rag_techniques table
         supabase.table("rag_techniques").upsert({
             "category": tech['category'],
