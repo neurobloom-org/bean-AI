@@ -1,55 +1,80 @@
-"""
-shared/enums.py
-----------------
-Enumerations used across the Bean AI system.
-"""
+"""BEAN AI v5 — Enums."""
 
-from enum import Enum, StrEnum
+from enum import Enum
 
 
-class Framework(StrEnum):
-    """Therapy frameworks used by Bean."""
+class EmotionLabel(str, Enum):
+    HAPPY      = "happy"
+    SAD        = "sad"
+    ANGRY      = "angry"
+    FEARFUL    = "fearful"
+    DISGUSTED  = "disgusted"
+    SURPRISED  = "surprised"
+    NEUTRAL    = "neutral"
+    CALM       = "calm"
 
-    CBT = "cbt"
-    MBCT = "mbct"
-    DCT = "dct"
+    @classmethod
+    def negative(cls) -> set["EmotionLabel"]:
+        return {cls.SAD, cls.ANGRY, cls.FEARFUL, cls.DISGUSTED}
 
-
-class MoodScore(int, Enum):
-    """Mood scores from 1 (very low) to 5 (positive)."""
-
-    VERY_LOW = 1
-    LOW = 2
-    NEUTRAL = 3
-    IMPROVING = 4
-    POSITIVE = 5
-
-
-class CrisisLevel(int, Enum):
-    """Crisis detection levels."""
-
-    NONE = 0
-    ELEVATED = 1
-    CRITICAL = 2
+    @classmethod
+    def positive(cls) -> set["EmotionLabel"]:
+        return {cls.HAPPY, cls.CALM}
 
 
-class AgentType(StrEnum):
-    """Types of agents in Bean AI system."""
-
-    CASUAL_CHAT = "casual_chat"
+class RouteType(str, Enum):
+    CASUAL  = "casual"
     THERAPY = "therapy"
-    TASK = "task"
-    MUSIC = "music"
-    MEMORY = "memory"
-    TTS = "tts"
-    STT = "stt"
-    ACTIVE_LISTEN = "active_listen"
-    ALERT = "alert"
+    TASK    = "task"
+    MUSIC   = "music"
+    ALERT   = "alert"
+
+    def uses_pro_llm(self) -> bool:
+        return self in {RouteType.THERAPY, RouteType.ALERT}
 
 
-class SessionStatus(StrEnum):
-    """Status of a Bean session."""
+class AlertLevel(str, Enum):
+    NONE   = "none"
+    LOW    = "low"
+    MEDIUM = "medium"
+    HIGH   = "high"
+    CRISIS = "crisis"
 
-    ACTIVE = "active"
+    def requires_sms(self) -> bool:
+        return self in {AlertLevel.HIGH, AlertLevel.CRISIS}
+
+    def score(self) -> int:
+        return {"none": 0, "low": 1, "medium": 2, "high": 3, "crisis": 4}[self.value]
+
+
+class AlertFactor(str, Enum):
+    F1_CRISIS_KEYWORD     = "f1_crisis_keyword"
+    F2_NEGATIVE_EMOTION   = "f2_negative_emotion"
+    F3_ESCALATION         = "f3_escalation_pattern"
+    F4_VULNERABILITY      = "f4_vulnerability"
+    F5_EXPLICIT_STATEMENT = "f5_explicit_statement"
+
+
+class SessionStatus(str, Enum):
+    ACTIVE  = "active"
+    PAUSED  = "paused"
+    ENDED   = "ended"
+    EXPIRED = "expired"
+
+
+class TaskStatus(str, Enum):
+    PENDING   = "pending"
+    REMINDED  = "reminded"
     COMPLETED = "completed"
-    ESCALATED = "escalated"
+    SNOOZED   = "snoozed"
+    CANCELLED = "cancelled"
+
+
+class MusicAction(str, Enum):
+    PLAY       = "play_music"
+    STOP       = "stop_music"
+    NEXT       = "next_track"
+    SKIP       = "skip_track"
+    PAUSE      = "pause_music"
+    RESUME     = "resume_music"
+    SET_VOLUME = "set_volume"

@@ -1,54 +1,56 @@
-"""
-shared/exceptions.py
-----------------------
-Custom exceptions for Bean AI system.
-All other modules import exceptions from here.
-"""
+"""BEAN AI v5 — Custom exceptions."""
 
 
-class BeanBaseException(Exception):
-    """Base exception for all Bean AI errors."""
-
-    pass
+class BEANError(Exception):
+    """Base exception for all BEAN AI errors."""
 
 
-class TranscriptionError(BeanBaseException):
-    """Raised when speech-to-text fails."""
-
-    pass
+class ConfigError(BEANError):
+    """Missing or invalid configuration."""
 
 
-class EmbeddingError(BeanBaseException):
-    """Raised when embedding generation fails."""
+# ── Auth ──────────────────────────────────────────────────────────────────────
+class AuthError(BEANError):
+    """Authentication or authorisation failure."""
 
-    pass
+class TokenExpiredError(AuthError):
+    """JWT has expired."""
 
-
-class RAGError(BeanBaseException):
-    """Raised when RAG retrieval fails."""
-
-    pass
-
-
-class LLMError(BeanBaseException):
-    """Raised when LLM generation fails."""
-
-    pass
+class WebSocketAuthError(AuthError):
+    """WebSocket authentication failed."""
 
 
-class SafetyError(BeanBaseException):
-    """Raised when a safety/crisis issue is detected."""
+# ── External services ─────────────────────────────────────────────────────────
+class DeepgramConnectionError(BEANError):
+    """Failed to connect or communicate with Deepgram STT."""
 
-    pass
+class ElevenLabsError(BEANError):
+    """ElevenLabs TTS failure."""
+
+class LLMError(BEANError):
+    """LLM generation failure."""
+
+class EmbeddingError(BEANError):
+    """Embedding generation failure."""
+
+class SupabaseError(BEANError):
+    """Supabase DB/Auth operation failure."""
+
+class CalendarError(BEANError):
+    """Google Calendar API failure."""
+
+class RAGError(BEANError):
+    """RAG retrieval failure."""
 
 
-class DatabaseError(BeanBaseException):
-    """Raised when database operations fail."""
+# ── Safety ────────────────────────────────────────────────────────────────────
+class CrisisDetectedError(BEANError):
+    """Crisis-level safety event detected — triggers immediate alert."""
 
-    pass
 
+# ── Session ───────────────────────────────────────────────────────────────────
+class SessionNotFoundError(BEANError):
+    """Session does not exist or has expired."""
 
-class AuthenticationError(BeanBaseException):
-    """Raised when authentication fails."""
-
-    pass
+class RateLimitExceededError(BEANError):
+    """Rate limit exceeded for this user."""
