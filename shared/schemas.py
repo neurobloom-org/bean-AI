@@ -10,7 +10,6 @@ from datetime import datetime
 from pydantic import BaseModel
 from shared.enums import AgentType, CrisisLevel, Framework, MoodScore
 
-
 class SessionCreate(BaseModel):
     """Schema for creating a new session."""
     user_id:    str
