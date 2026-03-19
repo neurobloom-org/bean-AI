@@ -4,10 +4,11 @@ from typing import List
 from supabase import create_client, Client
 
 # --- CONFIGURATION ---
-SUPABASE_URL: str = os.environ.get("SUPABASE_URL", "your-supabase-url")
-SUPABASE_KEY: str = os.environ.get("SUPABASE_SERVICE_KEY", "your-service-role-key")
+# Using specific variable names to ensure Git detects a change from previous versions
+SB_URL: str = os.environ.get("SUPABASE_URL", "your-supabase-url")
+SB_KEY: str = os.environ.get("SUPABASE_SERVICE_KEY", "your-service-role-key")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase_client: Client = create_client(SB_URL, SB_KEY)
 
 
 def get_dummy_embedding(text: str) -> List[float]:
@@ -15,6 +16,8 @@ def get_dummy_embedding(text: str) -> List[float]:
     Placeholder for actual OpenAI Embedding.
     Returns a 1536-dimension vector of random small floats for testing.
     """
+    # Using a seeded random for consistency in this version
+    random.seed(len(text))
     return [random.uniform(-0.1, 0.1) for _ in range(1536)]
 
 
@@ -52,7 +55,7 @@ def seed_techniques() -> None:
         embedding = get_dummy_embedding(tech['content'])
 
         # Upsert into the rag_techniques table
-        supabase.table("rag_techniques").upsert({
+        supabase_client.table("rag_techniques").upsert({
             "category": tech['category'],
             "technique_name": tech['technique_name'],
             "content": tech['content'],
@@ -63,7 +66,7 @@ def seed_techniques() -> None:
 
 
 if __name__ == "__main__":
-    if SUPABASE_URL == "your-supabase-url":
+    if SB_URL == "your-supabase-url":
         print("❌ Error: Please set your SUPABASE_URL and SUPABASE_SERVICE_KEY first.")
     else:
         seed_techniques()
