@@ -32,15 +32,15 @@ class CrisisLevel(int, Enum):
 
 class AgentType(StrEnum):
     """Types of agents in Bean AI system."""
-    CASUAL_CHAT    = "casual_chat"
-    THERAPY        = "therapy"
-    TASK           = "task"
-    MUSIC          = "music"
-    MEMORY         = "memory"
-    TTS            = "tts"
-    STT            = "stt"
-    ACTIVE_LISTEN  = "active_listen"
-    ALERT          = "alert"
+    CASUAL_CHAT   = "casual_chat"
+    THERAPY       = "therapy"
+    TASK          = "task"
+    MUSIC         = "music"
+    MEMORY        = "memory"
+    TTS           = "tts"
+    STT           = "stt"
+    ACTIVE_LISTEN = "active_listen"
+    ALERT         = "alert"
 
 
 class SessionStatus(StrEnum):
@@ -48,3 +48,4 @@ class SessionStatus(StrEnum):
     ACTIVE    = "active"
     COMPLETED = "completed"
     ESCALATED = "escalated"
+    
