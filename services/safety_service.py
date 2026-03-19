@@ -17,7 +17,6 @@ from services.supabase_client import get_service_client
 from services.twilio_service import send_guardian_sms
 from shared.enums import AlertFactor, AlertLevel, EmotionLabel
 from shared.exceptions import CrisisDetectedError
-from shared.schemas import AlertCreate
 
 logger = logging.getLogger(__name__)
 
