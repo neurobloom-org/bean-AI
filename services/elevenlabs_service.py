@@ -1,31 +1,68 @@
-"""
-services/elevenlabs_service.py
-===============================
-ElevenLabs text-to-speech service.
-Only needs shared/ — no other services needed.
+"""BEAN AI v5 — ElevenLabs TTS service.
+
+Privacy: Audio is generated on-demand and streamed chunk-by-chunk directly
+to the ESP32 WebSocket. It is NEVER written to Supabase Storage or any disk.
 """
 
+import logging
+from fastapi import WebSocket
 from elevenlabs import AsyncElevenLabs
+from shared.config import get_settings
+from shared.exceptions import ElevenLabsError
 
-from shared.config import config
-
-elevenlabs = AsyncElevenLabs(api_key=config.ELEVENLABS_API_KEY)
-
-
-async def text_to_speech(text: str) -> bytes:
-    """Convert text to speech audio bytes using ElevenLabs."""
-    audio = await elevenlabs.generate(
-        text=text,
-        voice=config.ELEVENLABS_VOICE_ID,
-        model="eleven_turbo_v2",
-    )
-    audio_bytes = b""
-    async for chunk in audio:
-        audio_bytes += chunk
-    return audio_bytes
+logger = logging.getLogger(__name__)
+_client: AsyncElevenLabs | None = None
 
 
-async def get_voices() -> list[dict]:
-    """Get list of available voices."""
-    voices = await elevenlabs.voices.get_all()
-    return [{"id": v.voice_id, "name": v.name} for v in voices.voices]
+def _get_client() -> AsyncElevenLabs:
+    global _client
+    if _client is None:
+        settings = get_settings()
+        _client = AsyncElevenLabs(api_key=settings.elevenlabs_api_key)
+    return _client
+
+
+async def stream_tts_to_websocket(
+    text: str,
+    websocket: WebSocket,
+    turn_id: str,
+) -> None:
+    """Generate TTS for text and stream audio chunks to the ESP32 WebSocket.
+
+    Chunks are sent as binary WebSocket frames with a JSON header prefix.
+    Audio is never stored — it exists only in transit.
+    """
+    if not text.strip():
+        return
+
+    settings = get_settings()
+    client = _get_client()
+
+    try:
+        audio_stream = await client.generate(
+            text=text,
+            voice=settings.elevenlabs_voice_id,
+            model=settings.elevenlabs_model_id,
+            stream=True,
+        )
+
+        chunk_count = 0
+        async for chunk in audio_stream:
+            if chunk:
+                # Send audio chunk as binary frame
+                # ESP32 identifies it as audio by the "response_audio" prefix message
+                await websocket.send_bytes(chunk)
+                chunk_count += 1
+
+        # Signal end of audio for this turn
+        await websocket.send_json(
+            {
+                "type": "response_audio_end",
+                "turn_id": turn_id,
+            }
+        )
+        logger.debug("TTS streamed: %d chunks for turn %s", chunk_count, turn_id[:8])
+
+    except Exception as exc:
+        logger.error("TTS streaming failed: %s", exc)
+        raise ElevenLabsError(f"TTS failed: {exc}") from exc
