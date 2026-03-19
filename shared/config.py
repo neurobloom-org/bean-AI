@@ -44,4 +44,3 @@ class Config:
 
 # Single instance imported everywhere
 config = Config()
-
