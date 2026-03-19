@@ -5,10 +5,11 @@ Pydantic schemas for Bean AI system.
 Imports from enums and config — must be built last in shared/.
 """
 
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
-from shared.enums import Framework, MoodScore, CrisisLevel, AgentType
+
+from pydantic import BaseModel
+
+from shared.enums import AgentType, CrisisLevel, Framework, MoodScore
 
 
 # - Session Schemas -
@@ -24,7 +25,7 @@ class SessionResponse(BaseModel):
     transcript:     str
     response:       str
     mood_score:     MoodScore
-    framework_used: Optional[Framework] = None
+    framework_used: Framework | None = None
     crisis_level:   CrisisLevel
     agent_type:     AgentType
 
@@ -56,10 +57,11 @@ class RAGChunk(BaseModel):
     framework: Framework
     topic:     str
     source:    str
-    score:     Optional[float] = None
+    score:     float | None = None
 
 
 class RAGResponse(BaseModel):
     """Schema for RAG retrieval result."""
     chunks:         list[RAGChunk]
     framework_used: Framework
+

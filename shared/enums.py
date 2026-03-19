@@ -4,10 +4,10 @@ shared/enums.py
 Enumerations used across the Bean AI system.
 """
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 
-class Framework(str, Enum):
+class Framework(StrEnum):
     """Therapy frameworks used by Bean."""
     CBT  = "cbt"
     MBCT = "mbct"
@@ -30,7 +30,7 @@ class CrisisLevel(int, Enum):
     CRITICAL = 2
 
 
-class AgentType(str, Enum):
+class AgentType(StrEnum):
     """Types of agents in Bean AI system."""
     CASUAL_CHAT    = "casual_chat"
     THERAPY        = "therapy"
@@ -43,8 +43,9 @@ class AgentType(str, Enum):
     ALERT          = "alert"
 
 
-class SessionStatus(str, Enum):
+class SessionStatus(StrEnum):
     """Status of a Bean session."""
     ACTIVE    = "active"
     COMPLETED = "completed"
     ESCALATED = "escalated"
+    

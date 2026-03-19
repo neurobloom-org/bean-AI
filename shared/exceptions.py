@@ -44,3 +44,4 @@ class DatabaseError(BeanBaseException):
 class AuthenticationError(BeanBaseException):
     """Raised when authentication fails."""
     pass
+
