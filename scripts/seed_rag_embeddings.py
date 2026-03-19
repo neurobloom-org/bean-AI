@@ -1,4 +1,5 @@
 import os
+import random
 from typing import List
 from supabase import create_client, Client
 
@@ -8,18 +9,18 @@ SUPABASE_KEY: str = os.environ.get("SUPABASE_SERVICE_KEY", "your-service-role-ke
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+
 def get_dummy_embedding(text: str) -> List[float]:
     """
-    Placeholder for actual OpenAI Embedding. 
+    Placeholder for actual OpenAI Embedding.
     Returns a 1536-dimension vector of random small floats for testing.
     """
-    import random
     return [random.uniform(-0.1, 0.1) for _ in range(1536)]
+
 
 def seed_techniques() -> None:
     """
     Seeds the RAG techniques into the Supabase database.
-    Added '-> None' to satisfy strict type checking (mypy).
     """
     print("🌱 Starting RAG seeding...")
 
@@ -27,22 +28,22 @@ def seed_techniques() -> None:
         {
             "category": "DBT",
             "technique_name": "4-7-8 Breathing",
-            "content": "Inhale for 4 seconds, hold for 7 seconds, exhale for 8 seconds. This resets the nervous system."
+            "content": "Inhale for 4 seconds, hold for 7 seconds, exhale for 8 seconds."
         },
         {
             "category": "CBT",
             "technique_name": "Behavioral Activation",
-            "content": "Schedule small, manageable activities that bring a sense of accomplishment or pleasure."
+            "content": "Schedule small, manageable activities for pleasure."
         },
         {
             "category": "CBT",
             "technique_name": "Thought Challenging",
-            "content": "Identify the negative thought, look for evidence for/against it, and find a balanced perspective."
+            "content": "Identify the negative thought and find a balanced perspective."
         },
         {
             "category": "General",
             "technique_name": "Active Listening",
-            "content": "Bean should repeat back what it heard to ensure the user feels understood before giving advice."
+            "content": "Bean repeats back what it heard to ensure understanding."
         }
     ]
 
@@ -59,6 +60,7 @@ def seed_techniques() -> None:
         }, on_conflict="technique_name").execute()
 
     print("✅ Seeding complete! Check your Supabase dashboard now.")
+
 
 if __name__ == "__main__":
     if SUPABASE_URL == "your-supabase-url":
