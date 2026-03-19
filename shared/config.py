@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     rate_limit_ws_messages_per_min: int = 60
     rate_limit_api_calls_per_min: int = 100
     rate_limit_llm_calls_per_hour: int = 10_000
+    rate_limit_hash_salt: str = ""
 
     # ── Background Jobs ───────────────────────────────────────────────────────
     transcript_purge_interval_minutes: int = 60
