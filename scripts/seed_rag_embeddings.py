@@ -50,7 +50,7 @@ def seed_techniques() -> None:
 
     for tech in techniques:
         print(f"  -> Processing: {tech['technique_name']}")
-        embedding = get_dummy_embedding(tech['content'])
+        embedding = get_dummy_embedding(tech["content"])
 
         supabase_client.table("rag_techniques").upsert(
             {
