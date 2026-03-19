@@ -1,29 +1,28 @@
 import os
-import json
-import uuid
 from typing import List
 from supabase import create_client, Client
 
 # --- CONFIGURATION ---
-# Replace these with your actual Supabase URL and Service Role Key if not in environment
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "your-supabase-url")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "your-service-role-key")
+SUPABASE_URL: str = os.environ.get("SUPABASE_URL", "your-supabase-url")
+SUPABASE_KEY: str = os.environ.get("SUPABASE_SERVICE_KEY", "your-service-role-key")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def get_dummy_embedding(text: str) -> List[float]:
     """
     Placeholder for actual OpenAI Embedding. 
-    In production, you would use: openai.Embedding.create(...)
-    This returns a 1536-dimension vector of random small floats for testing.
+    Returns a 1536-dimension vector of random small floats for testing.
     """
     import random
     return [random.uniform(-0.1, 0.1) for _ in range(1536)]
 
-def seed_techniques():
+def seed_techniques() -> None:
+    """
+    Seeds the RAG techniques into the Supabase database.
+    Added '-> None' to satisfy strict type checking (mypy).
+    """
     print("🌱 Starting RAG seeding...")
     
-    # These match the techniques seen in your screenshot
     techniques = [
         {
             "category": "DBT",
@@ -52,7 +51,7 @@ def seed_techniques():
         embedding = get_dummy_embedding(tech['content'])
         
         # Upsert into the rag_techniques table
-        data, count = supabase.table("rag_techniques").upsert({
+        supabase.table("rag_techniques").upsert({
             "category": tech['category'],
             "technique_name": tech['technique_name'],
             "content": tech['content'],
