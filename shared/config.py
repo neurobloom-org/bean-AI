@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # ── Application ──────────────────────────────────────────────────────────
     app_name: str = "BEAN AI"
-    app_version: str = "5.0.0"
+    app_version: str = "1.0.0"
     environment: str = "development"
     debug: bool = False
     log_level: str = "INFO"
