@@ -1,4 +1,4 @@
-"""BEAN AI v5 — Emotions routes.
+"""BEAN AI v1 — Emotions routes.
 
 Returns aggregated emotion/session data for the mobile app and clinician views.
 

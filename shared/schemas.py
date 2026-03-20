@@ -10,6 +10,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from uuid import UUID
+
 
 # ── Timezone-aware datetime alias ─────────────────────────────────────────────
 UtcDatetime = Annotated[datetime, Field(default_factory=lambda: datetime.now(UTC))]
@@ -321,11 +323,9 @@ class HealthResponse(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 # Guardian / doctor API
 # ─────────────────────────────────────────────────────────────────────────────
-
 class GuardianLinkCreate(BaseModel):
-    patient_user_id: str
+    guardian_user_id: UUID
     relationship: Literal["guardian", "doctor", "parent", "caregiver"] = "guardian"
-
 
 class GuardianPatientOverview(BaseModel):
     patient_user_id: str
