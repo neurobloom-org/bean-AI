@@ -1,19 +1,6 @@
 """BEAN AI — Supabase JWT authentication middleware.
 
 Updated for modern Supabase Auth.
-
-What this version improves:
-  ✓ Supports BOTH legacy HS256 tokens and newer asymmetric Supabase JWTs
-  ✓ Validates JWT audience + issuer
-  ✓ Requires critical claims like exp, sub, aud, iss
-  ✓ Never accepts JWTs from query parameters
-  ✓ Keeps WebSocket auth via Sec-WebSocket-Protocol: bearer.<token>
-  ✓ Uses in-memory JWKS caching to avoid fetching keys on every request
-  ✓ Normalizes public paths so /docs and /docs/ both work
-  ✓ Retries JWKS fetch once if signing keys rotate
-  ✓ Exposes role claim on request.state for downstream authorization logic
-  ✓ Allows CORS preflight OPTIONS requests through auth middleware
-  ✓ Supports exact public paths and optional public path prefixes
 """
 
 from __future__ import annotations
@@ -40,10 +27,6 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # Public routes
 # ─────────────────────────────────────────────────────────────────────────────
-# EXACT public paths are fast O(1) lookups.
-# PUBLIC_PATH_PREFIXES are optional and useful for dynamic public endpoints
-# like /api/v1/public/profiles/{user_id}.
-# Keep prefixes minimal and intentional to avoid over-exposing routes.
 
 PUBLIC_PATHS: frozenset[str] = frozenset(
     {
@@ -60,10 +43,7 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
     }
 )
 
-PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
-    # Example:
-    # "/api/v1/public/",
-)
+PUBLIC_PATH_PREFIXES: tuple[str, ...] = ()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # JWKS cache
@@ -98,23 +78,14 @@ def _normalize_path(path: str) -> str:
 
 
 def _is_public_path(path: str) -> bool:
-    """Return True if the path is public.
-
-    Supports:
-      - exact public paths
-      - optional prefix-based public route families
-    """
+    """Return True if the path is public."""
     if path in PUBLIC_PATHS:
         return True
-
     return any(path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES)
 
 
 async def _fetch_jwks(force_refresh: bool = False) -> dict[str, dict[str, Any]]:
-    """Fetch and cache the JWKS document from Supabase.
-
-    Returns a dictionary keyed by `kid` for O(1) lookup.
-    """
+    """Fetch and cache the JWKS document from Supabase."""
     url = _jwks_url()
     now = time.time()
 
@@ -142,9 +113,7 @@ async def _fetch_jwks(force_refresh: bool = False) -> dict[str, dict[str, Any]]:
                 jwks_by_kid[key["kid"]] = key
 
         if not jwks_by_kid:
-            raise ValueError(
-                "Invalid JWKS response from Supabase: no usable keys found"
-            )
+            raise ValueError("Invalid JWKS response from Supabase: no usable keys found")
 
         _JWKS_CACHE[url] = {
             "data": jwks_by_kid,
@@ -154,41 +123,35 @@ async def _fetch_jwks(force_refresh: bool = False) -> dict[str, dict[str, Any]]:
 
 
 def _get_token_header(token: str) -> dict[str, Any]:
-    """Read the unverified JWT header so we can choose the validation method."""
+    """Read the unverified JWT header."""
     try:
-        return pyjwt.get_unverified_header(token)
+        return cast(dict[str, Any], pyjwt.get_unverified_header(token))
     except pyjwt.InvalidTokenError as exc:
         raise ValueError(f"Invalid token header: {exc}") from exc
 
 
 def _decode_with_hs256(token: str) -> dict[str, Any]:
-    """Validate legacy HS256 Supabase JWTs using SUPABASE_JWT_SECRET."""
+    """Validate legacy HS256 Supabase JWTs."""
     settings = get_settings()
 
     if not settings.supabase_jwt_secret:
-        raise ValueError(
-            "HS256 token received but SUPABASE_JWT_SECRET is not configured"
-        )
+        raise ValueError("HS256 token received but SUPABASE_JWT_SECRET is not configured")
 
     try:
-        payload = pyjwt.decode(
-            token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
-            # Supabase standard end-user JWTs use aud="authenticated".
-            audience="authenticated",
-            issuer=_expected_issuer(),
-            options={
-                "require": ["exp", "sub", "aud", "iss"],
-            },
+        # FIX Line 128: Hard cast the result of decode directly
+        return cast(
+            dict[str, Any],
+            pyjwt.decode(
+                token,
+                settings.supabase_jwt_secret,
+                algorithms=["HS256"],
+                audience="authenticated",
+                issuer=_expected_issuer(),
+                options={"require": ["exp", "sub", "aud", "iss"]},
+            )
         )
-        return payload
     except pyjwt.ExpiredSignatureError as exc:
         raise ValueError("Token expired — please re-authenticate") from exc
-    except pyjwt.InvalidAudienceError as exc:
-        raise ValueError("Invalid token audience") from exc
-    except pyjwt.InvalidIssuerError as exc:
-        raise ValueError("Invalid token issuer") from exc
     except pyjwt.InvalidTokenError as exc:
         raise ValueError(f"Invalid token: {exc}") from exc
 
@@ -201,12 +164,8 @@ async def _decode_with_jwks(token: str, kid: str) -> dict[str, Any]:
         raise ValueError(f"Failed to fetch Supabase JWKS: {exc}") from exc
 
     matching_key = jwks_by_kid.get(kid)
-
     if not matching_key:
-        try:
-            jwks_by_kid = await _fetch_jwks(force_refresh=True)
-        except Exception as exc:
-            raise ValueError(f"Failed to refresh Supabase JWKS: {exc}") from exc
+        jwks_by_kid = await _fetch_jwks(force_refresh=True)
         matching_key = jwks_by_kid.get(kid)
 
     if not matching_key:
@@ -214,24 +173,20 @@ async def _decode_with_jwks(token: str, kid: str) -> dict[str, Any]:
 
     try:
         public_key = cast(RSAPublicKey, algorithms.RSAAlgorithm.from_jwk(matching_key))
-        payload = pyjwt.decode(
-            token,
-            public_key,
-            algorithms=["RS256"],
-            # Supabase standard end-user JWTs use aud="authenticated".
-            audience="authenticated",
-            issuer=_expected_issuer(),
-            options={
-                "require": ["exp", "sub", "aud", "iss"],
-            },
+        # FIX: Hard cast here as well
+        return cast(
+            dict[str, Any],
+            pyjwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                audience="authenticated",
+                issuer=_expected_issuer(),
+                options={"require": ["exp", "sub", "aud", "iss"]},
+            )
         )
-        return payload
     except pyjwt.ExpiredSignatureError as exc:
         raise ValueError("Token expired — please re-authenticate") from exc
-    except pyjwt.InvalidAudienceError as exc:
-        raise ValueError("Invalid token audience") from exc
-    except pyjwt.InvalidIssuerError as exc:
-        raise ValueError("Invalid token issuer") from exc
     except pyjwt.InvalidTokenError as exc:
         raise ValueError(f"Invalid token: {exc}") from exc
 
@@ -248,7 +203,7 @@ async def decode_supabase_jwt(token: str) -> dict[str, Any]:
     if alg == "RS256":
         if not kid:
             raise ValueError("Missing key ID (kid) in token header")
-        return await _decode_with_jwks(token, kid)
+        return await _decode_with_jwks(token, str(kid))
 
     raise ValueError(f"Unsupported JWT algorithm: {alg}")
 
@@ -260,28 +215,23 @@ async def decode_supabase_jwt(token: str) -> dict[str, Any]:
 
 def extract_token_from_request(request: Request) -> str | None:
     """Extract JWT from Authorization header only."""
-    auth_header = request.headers.get("Authorization", "")
+    auth_header = str(request.headers.get("Authorization", ""))
     if auth_header.startswith("Bearer "):
-        return auth_header[7:].strip()
+        return str(auth_header[7:].strip())
     return None
 
 
 def extract_token_from_websocket(websocket: WebSocket) -> str | None:
-    """Extract JWT from a WebSocket connection.
-
-    Priority:
-      1. Sec-WebSocket-Protocol: bearer.<token>
-      2. Authorization: Bearer <token>
-    """
-    protocol_header = websocket.headers.get("Sec-WebSocket-Protocol", "")
+    """Extract JWT from a WebSocket connection."""
+    protocol_header = str(websocket.headers.get("Sec-WebSocket-Protocol", ""))
     for proto in protocol_header.split(","):
         proto = proto.strip()
         if proto.startswith("bearer."):
-            return proto[len("bearer.") :]
+            return str(proto[len("bearer.") :])
 
-    auth_header = websocket.headers.get("Authorization", "")
+    auth_header = str(websocket.headers.get("Authorization", ""))
     if auth_header.startswith("Bearer "):
-        return auth_header[7:].strip()
+        return str(auth_header[7:].strip())
 
     return None
 
@@ -291,7 +241,7 @@ def extract_token_from_websocket(websocket: WebSocket) -> str | None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class SupabaseAuthMiddleware(BaseHTTPMiddleware):
+class SupabaseAuthMiddleware(BaseHTTPMiddleware):  # type: ignore[misc]
     """Validate Supabase JWT on every non-public HTTP request."""
 
     async def dispatch(
@@ -299,16 +249,12 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         path = _normalize_path(request.url.path)
 
-        # Let CORS preflight requests pass through.
-        # This avoids rejecting browser OPTIONS requests that do not include
-        # Authorization headers.
         if request.method.upper() == "OPTIONS":
             return await call_next(request)
 
         if _is_public_path(path):
             return await call_next(request)
 
-        # WebSocket upgrades are authenticated inside the WS route itself.
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return await call_next(request)
 
@@ -317,8 +263,7 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={
-                    "detail": "Authorization header required. "
-                    "Use: Authorization: Bearer <token>"
+                    "detail": "Authorization header required. Use: Authorization: Bearer <token>"
                 },
             )
 
@@ -345,14 +290,7 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):
 
 
 async def authenticate_websocket(websocket: WebSocket) -> tuple[str, dict[str, Any]]:
-    """Authenticate a WebSocket connection and return (user_id, jwt_payload).
-
-    Note:
-    - This helper validates the token but does NOT call websocket.accept().
-    - Your route should accept the socket after successful auth.
-    - If the client sent Sec-WebSocket-Protocol: bearer.<token>, strict browser
-      clients may expect the accepted subprotocol to match.
-    """
+    """Authenticate a WebSocket connection and return (user_id, jwt_payload)."""
     token = extract_token_from_websocket(websocket)
     if not token:
         await websocket.close(
@@ -363,12 +301,7 @@ async def authenticate_websocket(websocket: WebSocket) -> tuple[str, dict[str, A
 
     try:
         payload = await decode_supabase_jwt(token)
-        user_id = payload["sub"]
-        logger.debug(
-            "WebSocket authenticated: user=%s role=%s",
-            user_id,
-            payload.get("role"),
-        )
+        user_id = str(payload["sub"])
         return user_id, payload
     except ValueError as exc:
         await websocket.close(code=4401, reason=str(exc))

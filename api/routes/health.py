@@ -56,7 +56,7 @@ async def _build_readiness_response(settings: Settings) -> HealthResponse:
     )
 
 
-@router.get("/")
+@router.get("/") # type: ignore[untyped-decorator]
 async def root_health_check(response: Response) -> dict[str, str]:
     """Liveness probe.
 
@@ -67,7 +67,7 @@ async def root_health_check(response: Response) -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse) # type: ignore[untyped-decorator]
 async def health_check(
     response: Response,
     settings: Annotated[Settings, Depends(get_settings)],

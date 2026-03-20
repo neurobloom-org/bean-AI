@@ -9,6 +9,7 @@ Important:
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -25,12 +26,8 @@ MAX_ALERT_LIMIT = 100
 
 
 def _extract_bearer_token_from_request(request: Request) -> str:
-    """Extract the caller JWT from the Authorization header.
-
-    We do this here instead of reading request.state.jwt_token because the
-    auth middleware intentionally does NOT store the raw token on request.state.
-    """
-    auth_header = request.headers.get("Authorization", "")
+    """Extract the caller JWT from the Authorization header."""
+    auth_header = str(request.headers.get("Authorization", ""))
     if not auth_header.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -44,10 +41,10 @@ def _extract_bearer_token_from_request(request: Request) -> str:
             detail="Bearer token is missing",
         )
 
-    return token
+    return str(token)
 
 
-@router.get("/")
+@router.get("/")  # type: ignore[untyped-decorator]
 async def list_alerts(
     request: Request,
     limit: int = Query(
@@ -65,17 +62,8 @@ async def list_alerts(
         default=False,
         description="Return only alerts that have not been acknowledged yet.",
     ),
-) -> dict[str, object]:
-    """List alerts visible to the authenticated caller.
-
-    Supabase RLS decides which rows are visible:
-    - users can see their own alerts
-    - linked guardians can see patient alerts if policies allow it
-
-    Important:
-    - Do NOT filter by request.state.user_id here, because that would block
-      guardian access to linked patient alerts.
-    """
+) -> dict[str, Any]:
+    """List alerts visible to the authenticated caller."""
     token = _extract_bearer_token_from_request(request)
     client = await get_authed_client(token)
 
@@ -101,7 +89,9 @@ async def list_alerts(
             detail="Failed to fetch alerts",
         ) from exc
 
-    alerts = result.data or []
+    # Tell MyPy this is a list of dictionaries
+    alerts = cast(list[dict[str, Any]], result.data) if result.data else []
+    
     return {
         "alerts": alerts,
         "limit": limit,
@@ -110,13 +100,9 @@ async def list_alerts(
     }
 
 
-@router.patch("/{alert_id}/acknowledge")
+@router.patch("/{alert_id}/acknowledge")  # type: ignore[untyped-decorator]
 async def acknowledge_alert(alert_id: UUID, request: Request) -> dict[str, bool]:
-    """Mark an alert as acknowledged.
-
-    Access is enforced by Supabase RLS.
-    Only rows the current caller is allowed to update will be modified.
-    """
+    """Mark an alert as acknowledged."""
     token = _extract_bearer_token_from_request(request)
     client = await get_authed_client(token)
 
