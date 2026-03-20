@@ -1,4 +1,4 @@
-"""BEAN AI v5 — Auth routes.
+"""BEAN AI v1 — Auth routes.
 
 Handles:
 - Supabase email/password auth
