@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from services.supabase_client import get_authed_client
 from shared.schemas import utcnow
