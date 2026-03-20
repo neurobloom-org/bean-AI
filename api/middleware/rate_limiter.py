@@ -7,11 +7,11 @@ Notes:
   concurrent load. For strict production-grade enforcement across replicas,
   move the check/increment logic into a Postgres RPC function.
 """
-
 from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Final
 
@@ -221,7 +221,7 @@ async def clean_expired_rate_limits() -> int:
 class RateLimiterMiddleware(BaseHTTPMiddleware):
     """HTTP API rate-limiting middleware backed by Supabase."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         settings = get_settings()
         path = _normalize_path(request.url.path)
 
@@ -250,7 +250,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
                 limit,
                 path,
             )
-            response = JSONResponse(
+            rate_limit_response = JSONResponse(
                 status_code=429,
                 content={
                     "detail": "Too many requests. Please slow down.",
@@ -259,12 +259,12 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": str(window_seconds)},
             )
             _add_rate_limit_headers(
-                response,
+                rate_limit_response,
                 limit=limit,
                 remaining=0,
                 window_seconds=window_seconds,
             )
-            return response
+            return rate_limit_response
 
         response = await call_next(request)
 

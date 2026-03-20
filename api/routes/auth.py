@@ -38,7 +38,7 @@ try:
     # Supabase Python auth errors are wrapped in AuthError according to docs.
     from gotrue.errors import AuthError
 except Exception:  # pragma: no cover
-    AuthError = Exception  # fallback to avoid hard import failure in odd envs
+    AuthError = Exception  # type: ignore[assignment, misc]
 
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ def _oauth_state_secret() -> str:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="OAUTH_STATE_SECRET is not configured",
         )
-    return secret
+    return str(secret)
 
 
 def _build_google_state_token(user_id: str) -> str:
@@ -144,7 +144,7 @@ def _decode_google_state_token(state_token: str) -> str:
             detail="Invalid OAuth state purpose",
         )
 
-    user_id = payload.get("sub")
+    user_id = str(payload.get("sub") or "")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -178,7 +178,7 @@ async def get_current_user_id(
             detail=str(exc),
         ) from exc
 
-    user_id = payload.get("sub")
+    user_id = str(payload.get("sub") or "")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

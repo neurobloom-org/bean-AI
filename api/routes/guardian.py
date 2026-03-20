@@ -422,17 +422,11 @@ async def get_patient_overview(
         partial_failures: list[str] = []
 
         # Step 2 — fire parallel queries with graceful degradation.
-        async def _safe(coro):
+        async def _safe(coro: Any) -> Any:
             """Wrap optional coroutines — None means the caller opted out."""
             return await coro if coro is not None else None
 
-        (
-            profile_result,
-            emotion_result,
-            alerts_result,
-            weekly_result,
-            last_session_result,
-        ) = await asyncio.gather(
+        _results = await asyncio.gather(  
             client.table("user_profiles")
             .select("display_name, diagnosis_tags, updated_at")
             .eq("user_id", patient_id_str)
@@ -484,6 +478,14 @@ async def get_patient_overview(
 
             return_exceptions=True,
         )
+
+        (
+            profile_result,
+            emotion_result,
+            alerts_result,
+            weekly_result,
+            last_session_result,
+        ) = _results
 
         # Step 3 — resolve results, recording any partial failures
         profile_result = _resolve_result(

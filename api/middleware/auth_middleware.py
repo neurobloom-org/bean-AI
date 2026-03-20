@@ -15,13 +15,14 @@ What this version improves:
   ✓ Allows CORS preflight OPTIONS requests through auth middleware
   ✓ Supports exact public paths and optional public path prefixes
 """
-
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
-from typing import Any
+from collections.abc import Awaitable, Callable
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+from typing import Any, cast
 
 import httpx
 import jwt as pyjwt
@@ -29,6 +30,7 @@ from fastapi import Request, WebSocket
 from fastapi.responses import JSONResponse
 from jwt import algorithms
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from shared.config import get_settings
 
@@ -116,12 +118,12 @@ async def _fetch_jwks(force_refresh: bool = False) -> dict[str, dict[str, Any]]:
 
     cached = _JWKS_CACHE.get(url)
     if not force_refresh and cached and cached["expires_at"] > now:
-        return cached["data"]
+        return cast(dict[str, dict[str, Any]], cached["data"])
 
     async with _JWKS_LOCK:
         cached = _JWKS_CACHE.get(url)
         if not force_refresh and cached and cached["expires_at"] > now:
-            return cached["data"]
+            return cast(dict[str, dict[str, Any]], cached["data"])
 
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(url)
@@ -207,7 +209,7 @@ async def _decode_with_jwks(token: str, kid: str) -> dict[str, Any]:
         raise ValueError("No matching signing key found for token")
 
     try:
-        public_key = algorithms.RSAAlgorithm.from_jwk(matching_key)
+        public_key = cast(RSAPublicKey, algorithms.RSAAlgorithm.from_jwk(matching_key))
         payload = pyjwt.decode(
             token,
             public_key,
@@ -286,7 +288,7 @@ def extract_token_from_websocket(websocket: WebSocket) -> str | None:
 class SupabaseAuthMiddleware(BaseHTTPMiddleware):
     """Validate Supabase JWT on every non-public HTTP request."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         path = _normalize_path(request.url.path)
 
         # Let CORS preflight requests pass through.
