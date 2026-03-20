@@ -15,6 +15,7 @@ What this version improves:
   ✓ Allows CORS preflight OPTIONS requests through auth middleware
   ✓ Supports exact public paths and optional public path prefixes
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -76,6 +77,7 @@ _JWKS_LOCK = asyncio.Lock()
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _expected_issuer() -> str:
     """Return the expected JWT issuer for this Supabase project."""
@@ -140,7 +142,9 @@ async def _fetch_jwks(force_refresh: bool = False) -> dict[str, dict[str, Any]]:
                 jwks_by_kid[key["kid"]] = key
 
         if not jwks_by_kid:
-            raise ValueError("Invalid JWKS response from Supabase: no usable keys found")
+            raise ValueError(
+                "Invalid JWKS response from Supabase: no usable keys found"
+            )
 
         _JWKS_CACHE[url] = {
             "data": jwks_by_kid,
@@ -253,6 +257,7 @@ async def decode_supabase_jwt(token: str) -> dict[str, Any]:
 # Token extraction helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def extract_token_from_request(request: Request) -> str | None:
     """Extract JWT from Authorization header only."""
     auth_header = request.headers.get("Authorization", "")
@@ -272,7 +277,7 @@ def extract_token_from_websocket(websocket: WebSocket) -> str | None:
     for proto in protocol_header.split(","):
         proto = proto.strip()
         if proto.startswith("bearer."):
-            return proto[len("bearer."):]
+            return proto[len("bearer.") :]
 
     auth_header = websocket.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -285,10 +290,13 @@ def extract_token_from_websocket(websocket: WebSocket) -> str | None:
 # HTTP middleware
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class SupabaseAuthMiddleware(BaseHTTPMiddleware):
     """Validate Supabase JWT on every non-public HTTP request."""
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         path = _normalize_path(request.url.path)
 
         # Let CORS preflight requests pass through.
@@ -334,6 +342,7 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):
 # ─────────────────────────────────────────────────────────────────────────────
 # WebSocket auth helper
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 async def authenticate_websocket(websocket: WebSocket) -> tuple[str, dict[str, Any]]:
     """Authenticate a WebSocket connection and return (user_id, jwt_payload).

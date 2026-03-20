@@ -29,6 +29,7 @@ router = APIRouter(prefix="/api/v1/guardian", tags=["guardian"])
 # Response models
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class GuardianLinkResponse(BaseModel):
     id: UUID
     guardian_user_id: UUID
@@ -97,6 +98,7 @@ class PatientOverviewResponse(BaseModel):
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _validate_tz_offset(value: int) -> int:
     if value < -840 or value > 840:
         raise HTTPException(
@@ -129,6 +131,7 @@ def _resolve_result(
 # ─────────────────────────────────────────────────────────────────────────────
 # Guardian link management
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.post("/link", status_code=status.HTTP_201_CREATED)
 async def create_guardian_link(
@@ -302,6 +305,7 @@ async def remove_guardian_link(
 # Guardian dashboard — patient list
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @router.get("/patients", response_model=GuardianPatientsResponse)
 async def list_my_patients(
     response: Response,
@@ -323,9 +327,7 @@ async def list_my_patients(
 
         links_result = (
             await client.table("guardian_links")
-            .select(
-                "patient_user_id, relationship, can_view_alerts, can_view_graphs"
-            )
+            .select("patient_user_id, relationship, can_view_alerts, can_view_graphs")
             .eq("guardian_user_id", current_user_id)
             .execute()
         )
@@ -344,9 +346,7 @@ async def list_my_patients(
             .execute()
         )
 
-        profile_map = {
-            p["user_id"]: p for p in (profiles_result.data or [])
-        }
+        profile_map = {p["user_id"]: p for p in (profiles_result.data or [])}
 
         patients = []
         for patient_id in patient_ids:
@@ -379,6 +379,7 @@ async def list_my_patients(
 # ─────────────────────────────────────────────────────────────────────────────
 # Guardian dashboard — patient overview
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/patients/{patient_id}/overview", response_model=PatientOverviewResponse)
 async def get_patient_overview(
@@ -426,13 +427,12 @@ async def get_patient_overview(
             """Wrap optional coroutines — None means the caller opted out."""
             return await coro if coro is not None else None
 
-        _results = await asyncio.gather(  
+        _results = await asyncio.gather(
             client.table("user_profiles")
             .select("display_name, diagnosis_tags, updated_at")
             .eq("user_id", patient_id_str)
             .maybe_single()
             .execute(),
-
             _safe(
                 client.rpc(
                     "get_daily_emotion_summary",
@@ -445,7 +445,6 @@ async def get_patient_overview(
                 if link.get("can_view_graphs")
                 else None
             ),
-
             _safe(
                 client.table("alerts")
                 .select(
@@ -459,7 +458,6 @@ async def get_patient_overview(
                 if link.get("can_view_alerts")
                 else None
             ),
-
             client.rpc(
                 "get_weekly_session_activity",
                 {
@@ -468,14 +466,12 @@ async def get_patient_overview(
                     "p_tz_offset_minutes": tz_offset_minutes,
                 },
             ).execute(),
-
             client.table("sessions")
             .select("started_at")
             .eq("user_id", patient_id_str)
             .order("started_at", desc=True)
             .limit(1)
             .execute(),
-
             return_exceptions=True,
         )
 
@@ -498,10 +494,16 @@ async def get_patient_overview(
             "alerts", alerts_result, fallback=None, partial_failures=partial_failures
         )
         weekly_result = _resolve_result(
-            "weekly_activity", weekly_result, fallback=None, partial_failures=partial_failures
+            "weekly_activity",
+            weekly_result,
+            fallback=None,
+            partial_failures=partial_failures,
         )
         last_session_result = _resolve_result(
-            "last_session", last_session_result, fallback=None, partial_failures=partial_failures
+            "last_session",
+            last_session_result,
+            fallback=None,
+            partial_failures=partial_failures,
         )
 
         profile = (profile_result.data if profile_result else None) or {}
@@ -525,7 +527,9 @@ async def get_patient_overview(
             ),
             emotion_summary_7d=[EmotionSummaryPoint(**row) for row in emotion_rows],
             recent_alerts=[GuardianAlertSummary(**row) for row in alert_rows],
-            sessions_this_week=int(current_week["session_count"]) if current_week else 0,
+            sessions_this_week=int(current_week["session_count"])
+            if current_week
+            else 0,
             total_duration_this_week_seconds=(
                 int(current_week["total_duration_seconds"]) if current_week else 0
             ),

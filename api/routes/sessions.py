@@ -23,6 +23,7 @@ CACHE_CONTROL_HEADER = "private, max-age=15"
 # Response models
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class SessionSummary(BaseModel):
     id: UUID
     started_at: str
@@ -44,6 +45,7 @@ class SessionDetail(SessionSummary):
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/", response_model=SessionListResponse)
 async def list_sessions(
@@ -74,10 +76,7 @@ async def list_sessions(
         )
 
         return SessionListResponse(
-            sessions=[
-                SessionSummary.model_validate(row)
-                for row in (result.data or [])
-            ]
+            sessions=[SessionSummary.model_validate(row) for row in (result.data or [])]
         )
 
     except Exception as exc:

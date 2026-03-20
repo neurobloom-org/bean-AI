@@ -74,7 +74,10 @@ class RefreshRequest(BaseModel):
 def _frontend_oauth_redirect_url(success: bool, message: str | None = None) -> str:
     """Build the frontend redirect URL after Google OAuth completes."""
     settings = get_settings()
-    base_url = getattr(settings, "frontend_base_url", "").rstrip("/") or "http://localhost:3000"
+    base_url = (
+        getattr(settings, "frontend_base_url", "").rstrip("/")
+        or "http://localhost:3000"
+    )
 
     params = {"calendar": "success" if success else "error"}
     if message:
@@ -110,7 +113,9 @@ def _build_google_state_token(user_id: str) -> str:
         "sub": user_id,
         "purpose": "google_oauth_state",
         "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(seconds=GOOGLE_OAUTH_STATE_TTL_SECONDS)).timestamp()),
+        "exp": int(
+            (now + timedelta(seconds=GOOGLE_OAUTH_STATE_TTL_SECONDS)).timestamp()
+        ),
     }
 
     return pyjwt.encode(payload, secret, algorithm="HS256")
@@ -345,9 +350,8 @@ async def google_oauth_start(
         "state": state_token,
     }
 
-    url = (
-        "https://accounts.google.com/o/oauth2/v2/auth?"
-        + urllib.parse.urlencode(params)
+    url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(
+        params
     )
 
     response = RedirectResponse(url=url)

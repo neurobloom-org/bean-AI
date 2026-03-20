@@ -7,6 +7,7 @@ Notes:
   concurrent load. For strict production-grade enforcement across replicas,
   move the check/increment logic into a Postgres RPC function.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -221,7 +222,9 @@ async def clean_expired_rate_limits() -> int:
 class RateLimiterMiddleware(BaseHTTPMiddleware):
     """HTTP API rate-limiting middleware backed by Supabase."""
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         settings = get_settings()
         path = _normalize_path(request.url.path)
 

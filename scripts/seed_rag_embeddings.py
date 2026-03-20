@@ -113,7 +113,9 @@ class GracefulShutdown:
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            LOGGER.debug("No running event loop available for signal handler installation")
+            LOGGER.debug(
+                "No running event loop available for signal handler installation"
+            )
             return
 
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -930,7 +932,9 @@ async def seed_embeddings(args: argparse.Namespace) -> int:
             )
 
             if not batch:
-                LOGGER.info("No more eligible rows with missing embeddings in this pass")
+                LOGGER.info(
+                    "No more eligible rows with missing embeddings in this pass"
+                )
                 break
 
             last_seen_id = batch[-1].id

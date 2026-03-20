@@ -118,11 +118,7 @@ async def create_task(
         create_payload["user_id"] = current_user_id
         create_payload["status"] = "pending"
 
-        result = (
-            await client.table("tasks")
-            .insert(create_payload)
-            .execute()
-        )
+        result = await client.table("tasks").insert(create_payload).execute()
 
         if not result.data:
             raise HTTPException(

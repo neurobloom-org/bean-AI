@@ -13,8 +13,10 @@ class ConfigError(BEANError):
 class AuthError(BEANError):
     """Authentication or authorisation failure."""
 
+
 class TokenExpiredError(AuthError):
     """JWT has expired."""
+
 
 class WebSocketAuthError(AuthError):
     """WebSocket authentication failed."""
@@ -24,20 +26,26 @@ class WebSocketAuthError(AuthError):
 class DeepgramConnectionError(BEANError):
     """Failed to connect or communicate with Deepgram STT."""
 
+
 class ElevenLabsError(BEANError):
     """ElevenLabs TTS failure."""
+
 
 class LLMError(BEANError):
     """LLM generation failure."""
 
+
 class EmbeddingError(BEANError):
     """Embedding generation failure."""
+
 
 class SupabaseError(BEANError):
     """Supabase DB/Auth operation failure."""
 
+
 class CalendarError(BEANError):
     """Google Calendar API failure."""
+
 
 class RAGError(BEANError):
     """RAG retrieval failure."""
@@ -51,6 +59,7 @@ class CrisisDetectedError(BEANError):
 # ── Session ───────────────────────────────────────────────────────────────────
 class SessionNotFoundError(BEANError):
     """Session does not exist or has expired."""
+
 
 class RateLimitExceededError(BEANError):
     """Rate limit exceeded for this user."""

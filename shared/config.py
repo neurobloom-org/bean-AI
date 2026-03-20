@@ -59,8 +59,12 @@ class Settings(BaseSettings):
 
     # ── Privacy & Data Retention ──────────────────────────────────────────────
     transcript_retention_hours: int = 24
-    emotion_retention_days: int = 90          # FIX: was emotion_purge_retention_days in some files
-    episodic_memory_retention_days: int = 365  # FIX: was episodic_memory_expiry_days in some files
+    emotion_retention_days: int = (
+        90  # FIX: was emotion_purge_retention_days in some files
+    )
+    episodic_memory_retention_days: int = (
+        365  # FIX: was episodic_memory_expiry_days in some files
+    )
     session_metadata_retention_days: int = 730
 
     # ── Safety ───────────────────────────────────────────────────────────────
@@ -80,7 +84,9 @@ class Settings(BaseSettings):
     session_cleanup_interval_hours: int = 6
 
     # ── Emotion Model (wav2vec2) ──────────────────────────────────────────────
-    emotion_model_name: str = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
+    emotion_model_name: str = (
+        "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
+    )
     emotion_window_ms: int = 500
 
     # ── Music ─────────────────────────────────────────────────────────────────

@@ -31,11 +31,14 @@ router = APIRouter(prefix="/api/v1/emotions", tags=["emotions"])
 # Response models
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class DailyEmotionPoint(BaseModel):
     day: str = Field(description="Local calendar day in YYYY-MM-DD format.")
     emotion: str = Field(description="Emotion label.")
     count: int = Field(description="Number of emotion events recorded that day.")
-    avg_confidence: float = Field(description="Average confidence for that emotion/day.")
+    avg_confidence: float = Field(
+        description="Average confidence for that emotion/day."
+    )
 
 
 class DailyEmotionSummaryResponse(BaseModel):
@@ -45,7 +48,9 @@ class DailyEmotionSummaryResponse(BaseModel):
 
 
 class WeeklyActivityPoint(BaseModel):
-    week: str = Field(description="Week start date (local Monday) in YYYY-MM-DD format.")
+    week: str = Field(
+        description="Week start date (local Monday) in YYYY-MM-DD format."
+    )
     session_count: int
     total_duration_seconds: int
     avg_turns_per_session: float
@@ -62,6 +67,7 @@ class WeeklyActivityResponse(BaseModel):
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _target_user_id(
     current_user_id: str,
     patient_id: UUID | None,
@@ -77,6 +83,7 @@ def _target_user_id(
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get(
     "/summary/daily",
