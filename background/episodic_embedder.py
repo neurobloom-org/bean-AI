@@ -1,131 +1,99 @@
 """BEAN AI — Episodic embedder background job.
 
-Called periodically to embed any session transcripts that haven't been
-embedded yet. In normal flow the MemoryWriterAgent handles this inline,
-but this job catches any that were missed.
+Runs every 5 minutes.
+Finds episodic_memories rows where embedding is NULL,
+generates embeddings, and updates those rows.
+
+Used as a fallback when memory_writer_agent fails.
 """
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
 
-from shared.config import get_settings
+from services.embedding_service import get_embedding
+from services.supabase_client import get_service_client
 
 logger = logging.getLogger(__name__)
 
 
-async def embed_unprocessed_sessions() -> int:
-    """Find recently-ended sessions without episodic embeddings and embed them."""
-    from services.embedding_service import get_embedding
-    from services.privacy_service import privacy_service
-    from services.supabase_client import get_service_client
-
-    settings = get_settings()
-    client = await get_service_client()
-    embedded_count = 0
-
+async def embed_missing_episodic_memories() -> int:
+    """Generate embeddings for episodic memory rows missing embeddings."""
     try:
-        cutoff = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+        client = await get_service_client()
 
         result = (
-            await client.table("sessions")
-            .select("id, user_id, ended_at")
-            .eq("status", "ended")
-            .gte("ended_at", cutoff)
-            .order("ended_at", desc=False)
+            await client.table("episodic_memories")
+            .select("id, memory_text")
+            .is_("embedding", "null")
+            .limit(50)
             .execute()
         )
 
-        for session in (result.data or []):
-            session_id = session["id"]
-            user_id = session["user_id"]
+        rows = result.data or []
+        updated_count = 0
 
-            existing = (
-                await client.table("episodic_memories")
-                .select("id")
-                .eq("session_id", session_id)
-                .limit(1)
-                .execute()
-            )
-            if existing.data:
-                continue
+        for row in rows:
+            memory_id = row.get("id")
+            memory_text = row.get("memory_text")
 
-            turns = await privacy_service.get_recent_transcript(
-                session_id=session_id,
-                max_turns=20,
-            )
-            if not turns:
-                continue
-
-            user_turns = [
-                t.get("text", "").strip()
-                for t in turns
-                if t.get("speaker") == "user" and t.get("text")
-            ]
-            if not user_turns:
-                continue
-
-            summary = " ".join(user_turns[:5])[:500]
-            if not summary.strip():
+            if not memory_id or not memory_text:
+                logger.warning(
+                    "[EpisodicEmbedder] Skipping row with missing id or memory_text"
+                )
                 continue
 
             try:
-                embedding = await get_embedding(summary)
-
-                expires_at = (
-                    datetime.now(UTC)
-                    + timedelta(days=settings.episodic_memory_retention_days)
-                ).isoformat()
+                embedding = await get_embedding(memory_text)
 
                 await (
                     client.table("episodic_memories")
-                    .insert(
-                        {
-                            "user_id": user_id,
-                            "session_id": session_id,
-                            "embedding": embedding,
-                            "memory_type": "session_summary",
-                            "expires_at": expires_at,
-                        }
-                    )
+                    .update({"embedding": embedding})
+                    .eq("id", memory_id)
                     .execute()
                 )
 
-                embedded_count += 1
+                updated_count += 1
                 logger.info(
-                    "[EpisodicEmbedder] Embedded session=%s user=%s",
-                    str(session_id)[:8],
-                    str(user_id)[:8],
+                    "[EpisodicEmbedder] Updated embedding for memory %s",
+                    str(memory_id)[:8],
                 )
 
             except Exception as exc:
                 logger.error(
-                    "[EpisodicEmbedder] Embedding failed for session %s: %s",
-                    str(session_id)[:8],
+                    "[EpisodicEmbedder] Failed to embed memory %s: %s",
+                    str(memory_id)[:8],
                     exc,
                 )
 
+        return updated_count
+
     except Exception as exc:
         logger.error("[EpisodicEmbedder] Job failed: %s", exc)
-
-    return embedded_count
+        return 0
 
 
 async def run_episodic_embedder_loop() -> None:
-    """Run episodic embedding every 30 minutes."""
-    interval_seconds = 1800
-    logger.info("[EpisodicEmbedder] Loop started — interval=30m")
+    """Run episodic embedder every 5 minutes."""
+    interval_seconds = 5 * 60
+
+    logger.info("[EpisodicEmbedder] Loop started — interval=5m")
 
     while True:
         try:
-            count = await embed_unprocessed_sessions()
+            count = await embed_missing_episodic_memories()
+
             if count:
-                logger.info("[EpisodicEmbedder] Embedded %d sessions", count)
+                logger.info(
+                    "[EpisodicEmbedder] Updated %d missing embeddings",
+                    count,
+                )
 
             await asyncio.sleep(interval_seconds)
+
         except asyncio.CancelledError:
             logger.info("[EpisodicEmbedder] Loop cancelled")
             break
+
         except Exception as exc:
             logger.error("[EpisodicEmbedder] Loop error: %s", exc)
             await asyncio.sleep(interval_seconds)
