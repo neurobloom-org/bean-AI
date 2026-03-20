@@ -91,7 +91,7 @@ async def list_alerts(
 
     # Tell MyPy this is a list of dictionaries
     alerts = cast(list[dict[str, Any]], result.data) if result.data else []
-    
+
     return {
         "alerts": alerts,
         "limit": limit,

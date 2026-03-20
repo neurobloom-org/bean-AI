@@ -113,7 +113,9 @@ async def _fetch_jwks(force_refresh: bool = False) -> dict[str, dict[str, Any]]:
                 jwks_by_kid[key["kid"]] = key
 
         if not jwks_by_kid:
-            raise ValueError("Invalid JWKS response from Supabase: no usable keys found")
+            raise ValueError(
+                "Invalid JWKS response from Supabase: no usable keys found"
+            )
 
         _JWKS_CACHE[url] = {
             "data": jwks_by_kid,
@@ -135,7 +137,9 @@ def _decode_with_hs256(token: str) -> dict[str, Any]:
     settings = get_settings()
 
     if not settings.supabase_jwt_secret:
-        raise ValueError("HS256 token received but SUPABASE_JWT_SECRET is not configured")
+        raise ValueError(
+            "HS256 token received but SUPABASE_JWT_SECRET is not configured"
+        )
 
     try:
         # FIX Line 128: Hard cast the result of decode directly
@@ -148,7 +152,7 @@ def _decode_with_hs256(token: str) -> dict[str, Any]:
                 audience="authenticated",
                 issuer=_expected_issuer(),
                 options={"require": ["exp", "sub", "aud", "iss"]},
-            )
+            ),
         )
     except pyjwt.ExpiredSignatureError as exc:
         raise ValueError("Token expired — please re-authenticate") from exc
@@ -183,7 +187,7 @@ async def _decode_with_jwks(token: str, kid: str) -> dict[str, Any]:
                 audience="authenticated",
                 issuer=_expected_issuer(),
                 options={"require": ["exp", "sub", "aud", "iss"]},
-            )
+            ),
         )
     except pyjwt.ExpiredSignatureError as exc:
         raise ValueError("Token expired — please re-authenticate") from exc
