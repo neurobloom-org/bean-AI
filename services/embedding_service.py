@@ -11,9 +11,11 @@ Privacy:
 import logging
 
 from openai import AsyncOpenAI
+from typing import Any
 
 from shared.config import get_settings
 from shared.exceptions import EmbeddingError
+
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +71,7 @@ async def search_similar_memories(
     query_text: str,
     top_k: int = 5,
     min_similarity: float = 0.7,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Search episodic memories by semantic similarity.
 
     Generates an embedding for query_text, then runs cosine similarity

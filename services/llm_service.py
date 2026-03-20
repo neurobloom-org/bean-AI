@@ -24,7 +24,7 @@ import json
 import logging
 from enum import Enum
 from typing import Any
-
+from collections.abc import AsyncGenerator
 import google.generativeai as genai
 
 from shared.config import get_settings
@@ -148,7 +148,7 @@ async def generate(
             model_name,
             len(text),
         )
-        return text
+        return str(text)
 
     except Exception as exc:
         logger.error(
@@ -186,7 +186,7 @@ async def generate_json(
     raw = raw.strip()
 
     try:
-        return json.loads(raw)
+        return dict(json.loads(raw))
     except json.JSONDecodeError as exc:
         logger.error(
             "JSON parse failed [task=%s]: %s\nRaw output (first 300 chars): %s",
@@ -201,7 +201,7 @@ async def generate_stream(
     task: str,
     prompt: str,
     system: str | None = None,
-):
+) -> AsyncGenerator[str, None]:
     """Async generator that streams response chunks.
 
     Usage:

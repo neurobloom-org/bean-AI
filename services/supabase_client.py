@@ -13,7 +13,7 @@ Two clients:
 import logging
 from typing import Any
 
-from supabase import AsyncClient, acreate_client
+from supabase import AsyncClient, acreate_client  # type: ignore[attr-defined]
 
 from shared.config import get_settings
 
@@ -168,7 +168,7 @@ async def get_user_profile(user_id: str) -> dict[str, Any] | None:
             .single()
             .execute()
         )
-        return result.data
+        return dict(result.data) if result.data else None
     except Exception as exc:
         logger.debug("No profile found for user %s: %s", user_id, exc)
         return None

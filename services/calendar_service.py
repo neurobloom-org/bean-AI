@@ -1,4 +1,4 @@
-"""BEAN AI v5 — Google Calendar service.
+"""BEAN AI v1 — Google Calendar service.
 
 Wraps the Google Calendar API for task/reminder management.
 OAuth tokens are stored in the oauth_tokens table in Supabase.
@@ -12,6 +12,7 @@ Flow:
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from shared.config import get_settings
 from shared.exceptions import CalendarError
@@ -55,7 +56,7 @@ async def get_calendar_token(user_id: str) -> str | None:
                 else:
                     return None
 
-        return access_token
+        return str(access_token) if access_token is not None else None
 
     except Exception as exc:
         logger.error("Failed to retrieve calendar token for user %s: %s", user_id, exc)
@@ -97,7 +98,7 @@ async def _refresh_google_token(user_id: str, refresh_token: str) -> str | None:
         )
 
         logger.info("Google token refreshed for user %s", user_id)
-        return new_access_token
+        return str(new_access_token) if new_access_token is not None else None
 
     except Exception as exc:
         logger.error("Token refresh failed for user %s: %s", user_id, exc)
@@ -131,7 +132,7 @@ class CalendarService:
 
             for cal in calendars:
                 if cal.get("summary") == "BEAN Reminders":
-                    return cal["id"]
+                    return str(cal["id"])
 
             # Create the calendar
             create_response = await http.post(
@@ -140,7 +141,7 @@ class CalendarService:
                 json={"summary": "BEAN Reminders", "timeZone": "UTC"},
             )
             create_response.raise_for_status()
-            return create_response.json()["id"]
+            return str(create_response.json()["id"])
 
     async def create_event(
         self,
@@ -149,7 +150,7 @@ class CalendarService:
         event_time: datetime,
         description: str | None = None,
         reminder_minutes: int = 10,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Create a calendar event with a popup reminder."""
         import httpx
 
@@ -179,13 +180,13 @@ class CalendarService:
                 json=event_body,
             )
             response.raise_for_status()
-            return response.json()
+            return dict(response.json())
 
     async def list_events(
         self,
         calendar_id: str,
         max_results: int = 5,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """List upcoming events in the calendar."""
         import httpx
 
@@ -202,7 +203,7 @@ class CalendarService:
                 },
             )
             response.raise_for_status()
-            return response.json().get("items", [])
+            return list(response.json().get("items", []))
 
     async def delete_event(self, calendar_id: str, event_id: str) -> None:
         """Delete a calendar event."""

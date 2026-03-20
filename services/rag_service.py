@@ -11,6 +11,7 @@ no personal history is passed to the retrieval query.
 """
 
 import logging
+from typing import Any
 
 from services.embedding_service import get_embedding
 from services.supabase_client import get_service_client
@@ -56,7 +57,7 @@ async def retrieve_cbt_techniques(
     situation_text: str,
     emotion: str,
     limit: int = 3,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Retrieve relevant CBT/DBT techniques for the current user situation.
 
     Args:
@@ -110,7 +111,7 @@ async def retrieve_cbt_techniques(
         return _FALLBACK_TECHNIQUES[:limit]
 
 
-def format_techniques_for_prompt(techniques: list[dict]) -> str:
+def format_techniques_for_prompt(techniques: list[dict[str, Any]]) -> str:
     """Format retrieved techniques into a readable prompt block.
 
     The TherapyAgent embeds this directly into its system prompt.

@@ -11,12 +11,14 @@ Privacy:
 import logging
 import random
 from datetime import UTC, datetime
+from typing import Any
 
 from services.llm_service import assess_safety
 from services.supabase_client import get_service_client
 from services.twilio_service import send_guardian_sms
 from shared.enums import AlertFactor, AlertLevel, EmotionLabel
 from shared.exceptions import CrisisDetectedError
+
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +135,7 @@ class SafetyService:
         emotion_trend: list[str],
         turn_number: int,
         vulnerability_flag: bool = False,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Assess a conversation turn for safety concerns.
 
         Returns the assessment dict. Automatically creates DB record and

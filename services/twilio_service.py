@@ -88,4 +88,4 @@ async def send_guardian_alert(
         from_=settings.twilio_from_number,
         to=guardian_phone,
     )
-    return message.sid
+    return str(message.sid)

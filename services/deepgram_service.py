@@ -52,7 +52,7 @@ class DeepgramConnection:
         self._ws: WebSocketClientProtocol | None = None
         self._on_transcript = on_transcript
         self._on_utterance_end = on_utterance_end
-        self._receive_task: asyncio.Task | None = None
+        self._receive_task: asyncio.Task[None] | None = None
         self._connected = False
         self._closing = False
         self._reconnect_attempts = 0
@@ -234,7 +234,7 @@ class DeepgramConnection:
             logger.error("Deepgram receive loop error: %s", exc)
             self._connected = False
 
-    async def _handle_results(self, data: dict) -> None:
+    async def _handle_results(self, data: dict[str, Any]) -> None:
         """Parse Deepgram Results message and fire callback."""
         try:
             channel = data.get("channel", {})
