@@ -1,5 +1,5 @@
 -- ============================================================================
--- BEAN AI v5 — Supabase Functions Migration 004
+-- BEAN AI v1 — Supabase Functions Migration 004
 -- pgvector RPC functions + analytics RPC functions
 -- ============================================================================
 
