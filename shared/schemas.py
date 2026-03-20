@@ -6,9 +6,11 @@ All datetimes are timezone-aware (UTC).
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+from uuid import UUID
 
 
 # ── Timezone-aware datetime alias ─────────────────────────────────────────────
@@ -23,6 +25,7 @@ def utcnow() -> datetime:
 # Auth
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TokenPayload(BaseModel):
     sub: str
     email: str | None = None
@@ -33,6 +36,7 @@ class TokenPayload(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 # User profile
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class UserProfile(BaseModel):
     user_id: str
@@ -62,15 +66,18 @@ class UserProfile(BaseModel):
 # Memory types (used by MemoryAgent)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class WorkingMemoryEntry(BaseModel):
     """A single turn in working memory (recent conversation)."""
-    speaker: str          # "user" | "assistant"
+
+    speaker: str  # "user" | "assistant"
     text: str
     timestamp: UtcDatetime = Field(default_factory=utcnow)
 
 
 class EpisodicMemoryResult(BaseModel):
     """Result of a pgvector similarity search (metadata only, no source text)."""
+
     memory_id: str
     emotion_label: str | None = None
     similarity_score: float
@@ -79,6 +86,7 @@ class EpisodicMemoryResult(BaseModel):
 
 class MemoryContext(BaseModel):
     """Assembled memory context for injection into LLM prompts."""
+
     working_memory: list[WorkingMemoryEntry] = Field(default_factory=list)
     user_profile: UserProfile | None = None
     episodic_memories: list[EpisodicMemoryResult] = Field(default_factory=list)
@@ -110,6 +118,7 @@ class MemoryContext(BaseModel):
 # Session
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class SessionCreate(BaseModel):
     user_id: str
     device_id: str | None = None
@@ -132,6 +141,7 @@ class SessionState(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 # WebSocket messages (ESP32 ↔ Cloud Run)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class AudioFrameMessage(BaseModel):
     type: Literal["audio_frame"] = "audio_frame"
@@ -174,9 +184,10 @@ class ResponseAudioMessage(BaseModel):
 
 class FillerPhraseResult(BaseModel):
     """Result of filler phrase selection (active listen agent)."""
+
     phrase: str
     audio_cache_key: str
-    audio_b64: str | None = None     # pre-cached TTS audio if available
+    audio_b64: str | None = None  # pre-cached TTS audio if available
 
 
 class FillerAudioMessage(BaseModel):
@@ -186,7 +197,8 @@ class FillerAudioMessage(BaseModel):
 
 class MusicCommand(BaseModel):
     """Music command sent to ESP32 hardware."""
-    action: str                      # MusicAction enum value
+
+    action: str  # MusicAction enum value
     genre_folder: str | None = None
     shuffle: bool = True
     volume: int | None = None
@@ -194,8 +206,13 @@ class MusicCommand(BaseModel):
 
 class MusicControlMessage(BaseModel):
     type: Literal[
-        "play_music", "stop_music", "next_track",
-        "skip_track", "pause_music", "resume_music", "set_volume"
+        "play_music",
+        "stop_music",
+        "next_track",
+        "skip_track",
+        "pause_music",
+        "resume_music",
+        "set_volume",
     ]
     genre_folder: str | None = None
     shuffle: bool | None = None
@@ -235,6 +252,7 @@ class PongMessage(BaseModel):
 # Alert
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class AlertCreate(BaseModel):
     user_id: str
     session_id: str | None = None
@@ -257,6 +275,7 @@ class AlertResponse(BaseModel):
 # Task / reminder
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
@@ -278,6 +297,7 @@ class TaskResponse(BaseModel):
 # Emotion graph data
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class DailyEmotionSummary(BaseModel):
     day: datetime
     emotion: str
@@ -297,6 +317,7 @@ class WeeklySessionActivity(BaseModel):
 # LLM routing output
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class RoutingDecision(BaseModel):
     route: Literal["casual", "therapy", "task", "music", "alert"]
     confidence: float
@@ -306,6 +327,7 @@ class RoutingDecision(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 # Health check
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class HealthResponse(BaseModel):
     status: str
@@ -321,9 +343,8 @@ class HealthResponse(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 # Guardian / doctor API
 # ─────────────────────────────────────────────────────────────────────────────
-
 class GuardianLinkCreate(BaseModel):
-    patient_user_id: str
+    guardian_user_id: UUID
     relationship: Literal["guardian", "doctor", "parent", "caregiver"] = "guardian"
 
 
@@ -340,6 +361,7 @@ class GuardianPatientOverview(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 # Internal
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class EpisodicsEmbedRequest(BaseModel):
     session_id: str

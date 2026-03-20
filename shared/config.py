@@ -1,4 +1,4 @@
-"""BEAN AI v5 — Privacy-First Configuration."""
+"""BEAN AI v1 — Privacy-First Configuration."""
 
 from pydantic_settings import BaseSettings
 
@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # ── Application ──────────────────────────────────────────────────────────
     app_name: str = "BEAN AI"
-    app_version: str = "5.0.0"
+    app_version: str = "1.0.0"
     environment: str = "development"
     debug: bool = False
     log_level: str = "INFO"
@@ -59,8 +59,12 @@ class Settings(BaseSettings):
 
     # ── Privacy & Data Retention ──────────────────────────────────────────────
     transcript_retention_hours: int = 24
-    emotion_retention_days: int = 90          # FIX: was emotion_purge_retention_days in some files
-    episodic_memory_retention_days: int = 365  # FIX: was episodic_memory_expiry_days in some files
+    emotion_retention_days: int = (
+        90  # FIX: was emotion_purge_retention_days in some files
+    )
+    episodic_memory_retention_days: int = (
+        365  # FIX: was episodic_memory_expiry_days in some files
+    )
     session_metadata_retention_days: int = 730
 
     # ── Safety ───────────────────────────────────────────────────────────────
@@ -72,6 +76,7 @@ class Settings(BaseSettings):
     rate_limit_ws_messages_per_min: int = 60
     rate_limit_api_calls_per_min: int = 100
     rate_limit_llm_calls_per_hour: int = 10_000
+    rate_limit_hash_salt: str = ""
 
     # ── Background Jobs ───────────────────────────────────────────────────────
     transcript_purge_interval_minutes: int = 60
@@ -79,7 +84,9 @@ class Settings(BaseSettings):
     session_cleanup_interval_hours: int = 6
 
     # ── Emotion Model (wav2vec2) ──────────────────────────────────────────────
-    emotion_model_name: str = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
+    emotion_model_name: str = (
+        "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
+    )
     emotion_window_ms: int = 500
 
     # ── Music ─────────────────────────────────────────────────────────────────
@@ -88,6 +95,11 @@ class Settings(BaseSettings):
     # ── ESP32 WebSocket ───────────────────────────────────────────────────────
     ws_ping_interval_seconds: int = 20
     ws_max_audio_frame_bytes: int = 65_536
+
+    # ── Frontend / OAuth ──────────────────────────────────────────────────────
+    frontend_base_url: str = "http://localhost:3000"
+    cookie_domain: str | None = None
+    oauth_state_secret: str = ""
 
     # ── Google OAuth (Calendar) ───────────────────────────────────────────────
     google_oauth_client_id: str = ""

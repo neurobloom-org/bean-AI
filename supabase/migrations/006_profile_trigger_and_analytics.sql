@@ -1,106 +1,93 @@
 -- ============================================================================
--- BEAN AI v1 — Supabase Functions Migration 004
--- pgvector RPC functions + analytics RPC functions
+-- BEAN AI v5 — Auth / OAuth / Emotion Fixes Migration 006
+-- Adds profile auto-create trigger and reasserts critical auth-related DB logic
 -- ============================================================================
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- search_episodic_memories
--- SECURITY INVOKER: correct — RLS enforces users only see their own memories
+-- Auto-create user_profiles row when auth.users row is created
+-- display_name is taken from raw_user_meta_data
 -- ─────────────────────────────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION public.search_episodic_memories(
-    p_user_id         UUID,
-    p_query_embedding vector(1536),
-    p_top_k           INTEGER DEFAULT 5,
-    p_min_similarity  FLOAT   DEFAULT 0.7
-)
-RETURNS TABLE (
-    id              UUID,
-    session_id      UUID,
-    emotion_label   TEXT,
-    memory_type     TEXT,
-    similarity      FLOAT,
-    created_at      TIMESTAMPTZ
-)
-LANGUAGE sql
-STABLE
-SECURITY INVOKER
-AS $$
-    SELECT
-        em.id,
-        em.session_id,
-        em.emotion_label,
-        em.memory_type,
-        1 - (em.embedding <=> p_query_embedding) AS similarity,
-        em.created_at
-    FROM public.episodic_memories em
-    WHERE em.user_id = p_user_id
-      AND (em.expires_at IS NULL OR em.expires_at > NOW())
-      AND 1 - (em.embedding <=> p_query_embedding) >= p_min_similarity
-    ORDER BY em.embedding <=> p_query_embedding
-    LIMIT p_top_k;
-$$;
-
-COMMENT ON FUNCTION public.search_episodic_memories IS
-    'Cosine similarity search over a user''s episodic memory vectors. Returns metadata only.';
-
-
--- ─────────────────────────────────────────────────────────────────────────────
--- search_rag_techniques
--- FIX: SECURITY DEFINER required — rag_techniques RLS blocks all authenticated
---      users (USING FALSE). SECURITY INVOKER would silently return 0 rows.
---      SET search_path = public is a security best practice with DEFINER.
--- ─────────────────────────────────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION public.search_rag_techniques(
-    p_query_embedding vector(1536),
-    p_limit           INTEGER DEFAULT 3,
-    p_min_similarity  FLOAT   DEFAULT 0.5
-)
-RETURNS TABLE (
-    id          UUID,
-    name        TEXT,
-    description TEXT,
-    example     TEXT,
-    category    TEXT,
-    similarity  FLOAT
-)
-LANGUAGE sql
-STABLE
+CREATE OR REPLACE FUNCTION public.handle_new_user_profile()
+RETURNS TRIGGER
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-    SELECT
-        rt.id,
-        rt.name,
-        rt.description,
-        rt.example,
-        rt.category,
-        1 - (rt.embedding <=> p_query_embedding) AS similarity
-    FROM public.rag_techniques rt
-    WHERE rt.embedding IS NOT NULL
-      AND 1 - (rt.embedding <=> p_query_embedding) >= p_min_similarity
-    ORDER BY rt.embedding <=> p_query_embedding
-    LIMIT p_limit;
+BEGIN
+    INSERT INTO public.user_profiles (
+        user_id,
+        display_name
+    )
+    VALUES (
+        NEW.id,
+        NEW.raw_user_meta_data ->> 'display_name'
+    )
+    ON CONFLICT (user_id) DO NOTHING;
+
+    RETURN NEW;
+END;
 $$;
 
-COMMENT ON FUNCTION public.search_rag_techniques IS
-    'Cosine similarity search over CBT/DBT techniques. SECURITY DEFINER because rag_techniques blocks authenticated users via RLS.';
+DROP TRIGGER IF EXISTS on_auth_user_created_profile ON auth.users;
+
+CREATE TRIGGER on_auth_user_created_profile
+AFTER INSERT ON auth.users
+FOR EACH ROW
+EXECUTE FUNCTION public.handle_new_user_profile();
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- get_daily_emotion_summary
--- SECURITY INVOKER: correct — guardians can read patient emotion_events via
---                   the guardian RLS policy (can_view_graphs = TRUE)
+-- Backfill missing profiles for any existing auth users
+-- ─────────────────────────────────────────────────────────────────────────────
+INSERT INTO public.user_profiles (user_id, display_name)
+SELECT
+    au.id,
+    au.raw_user_meta_data ->> 'display_name'
+FROM auth.users au
+LEFT JOIN public.user_profiles up
+    ON up.user_id = au.id
+WHERE up.user_id IS NULL;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Reassert oauth_tokens RLS in case this migration is run independently later
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE public.oauth_tokens ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "oauth_tokens: users read own" ON public.oauth_tokens;
+CREATE POLICY "oauth_tokens: users read own"
+    ON public.oauth_tokens FOR SELECT
+    TO authenticated
+    USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "oauth_tokens: users delete own" ON public.oauth_tokens;
+CREATE POLICY "oauth_tokens: users delete own"
+    ON public.oauth_tokens FOR DELETE
+    TO authenticated
+    USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "oauth_tokens: users update own" ON public.oauth_tokens;
+CREATE POLICY "oauth_tokens: users update own"
+    ON public.oauth_tokens FOR UPDATE
+    TO authenticated
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Recreate analytics functions with final signatures
+-- safe to rerun because CREATE OR REPLACE FUNCTION is idempotent
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.get_daily_emotion_summary(
-    p_target_user_id    UUID,
-    p_days              INTEGER,
+    p_target_user_id UUID,
+    p_days INTEGER,
     p_tz_offset_minutes INTEGER DEFAULT 0
 )
 RETURNS TABLE (
-    day             text,
-    emotion         text,
-    count           bigint,
-    avg_confidence  numeric
+    day text,
+    emotion text,
+    count bigint,
+    avg_confidence numeric
 )
 LANGUAGE sql
 STABLE
@@ -127,26 +114,17 @@ AS $$
     ORDER BY local_day ASC, emotion ASC;
 $$;
 
-COMMENT ON FUNCTION public.get_daily_emotion_summary IS
-    'Returns timezone-aware daily aggregated emotion counts for a user.';
-
-
--- ─────────────────────────────────────────────────────────────────────────────
--- get_weekly_session_activity
--- SECURITY INVOKER: correct — guardians can read patient sessions via
---                   the guardian RLS policy (can_view_graphs = TRUE)
--- ─────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.get_weekly_session_activity(
-    p_target_user_id    UUID,
-    p_weeks             INTEGER,
+    p_target_user_id UUID,
+    p_weeks INTEGER,
     p_tz_offset_minutes INTEGER DEFAULT 0
 )
 RETURNS TABLE (
-    week                    text,
-    session_count           bigint,
-    total_duration_seconds  bigint,
-    avg_turns_per_session   numeric,
-    most_common_emotion     text
+    week text,
+    session_count bigint,
+    total_duration_seconds bigint,
+    avg_turns_per_session numeric,
+    most_common_emotion text
 )
 LANGUAGE sql
 STABLE
@@ -207,6 +185,3 @@ AS $$
        AND er.rn = 1
     ORDER BY ws.week_start ASC;
 $$;
-
-COMMENT ON FUNCTION public.get_weekly_session_activity IS
-    'Returns timezone-aware weekly aggregated session activity for a user.';

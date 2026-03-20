@@ -1,5 +1,5 @@
 -- ============================================================================
--- BEAN AI v5 — Supabase Schema Migration 001
+-- BEAN AI v1 — Supabase Schema Migration 001
 -- Privacy-First Mental Health Companion
 -- ============================================================================
 
@@ -10,24 +10,24 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- user_profiles
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.user_profiles (
-    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
 
-    display_name    TEXT,
-    preferred_name  TEXT,
+    display_name        TEXT,
+    preferred_name      TEXT,
 
     interests           TEXT[]      NOT NULL DEFAULT '{}',
     important_people    TEXT[]      NOT NULL DEFAULT '{}',
     personality_notes   TEXT[]      NOT NULL DEFAULT '{}',
 
     -- Set by doctor/guardian onboarding — NOT extracted from conversation
-    diagnosis_tags  TEXT[]      NOT NULL DEFAULT '{}',
+    diagnosis_tags      TEXT[]      NOT NULL DEFAULT '{}',
 
     -- Safety flag: if true, F4_VULNERABILITY is always pre-set
-    is_minor        BOOLEAN     NOT NULL DEFAULT FALSE,
+    is_minor            BOOLEAN     NOT NULL DEFAULT FALSE,
 
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_updated    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT user_profiles_user_id_unique UNIQUE (user_id)
 );
@@ -107,23 +107,25 @@ CREATE TABLE IF NOT EXISTS public.session_transcripts (
 
 CREATE INDEX IF NOT EXISTS idx_session_transcripts_expires ON public.session_transcripts(expires_at);
 CREATE INDEX IF NOT EXISTS idx_session_transcripts_session ON public.session_transcripts(session_id, created_at);
+-- FIX: added user_id index — RLS enforces auth.uid() = user_id on this table
+CREATE INDEX IF NOT EXISTS idx_session_transcripts_user    ON public.session_transcripts(user_id);
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- episodic_memories  (vectors only)
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.episodic_memories (
-    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    session_id      UUID        REFERENCES public.sessions(id) ON DELETE SET NULL,
+    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID         NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    session_id      UUID         REFERENCES public.sessions(id) ON DELETE SET NULL,
 
     embedding       vector(1536) NOT NULL,
 
     emotion_label   TEXT,
-    memory_type     TEXT        NOT NULL DEFAULT 'episodic',
-    relevance_score FLOAT       NOT NULL DEFAULT 1.0,
+    memory_type     TEXT         NOT NULL DEFAULT 'episodic',
+    relevance_score FLOAT        NOT NULL DEFAULT 1.0,
 
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     expires_at      TIMESTAMPTZ
 );
 
@@ -132,6 +134,10 @@ CREATE INDEX IF NOT EXISTS idx_episodic_embedding
     ON public.episodic_memories
     USING ivfflat (embedding vector_cosine_ops)
     WITH (lists = 100);
+-- FIX: added expires_at index — cron job 003 deletes WHERE expires_at < NOW()
+CREATE INDEX IF NOT EXISTS idx_episodic_expires
+    ON public.episodic_memories(expires_at)
+    WHERE expires_at IS NOT NULL;
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -178,12 +184,12 @@ CREATE TABLE IF NOT EXISTS public.alerts (
     )
 );
 
-CREATE INDEX IF NOT EXISTS idx_alerts_user          ON public.alerts(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_user           ON public.alerts(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_unacknowledged ON public.alerts(user_id) WHERE acknowledged = FALSE;
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- tasks  (FIX: added reminder_at and calendar_event_id columns)
+-- tasks
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.tasks (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -192,8 +198,8 @@ CREATE TABLE IF NOT EXISTS public.tasks (
     title               TEXT        NOT NULL,
     description         TEXT,
     due_at              TIMESTAMPTZ,
-    reminder_at         TIMESTAMPTZ,          -- when to alert user (due_at - 10min)
-    calendar_event_id   TEXT,                 -- Google Calendar event ID (nullable)
+    reminder_at         TIMESTAMPTZ,
+    calendar_event_id   TEXT,
 
     status              TEXT        NOT NULL DEFAULT 'pending',
 
@@ -228,7 +234,7 @@ CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON public.rate_limits(window_s
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- oauth_tokens  (Google Calendar OAuth — NEW)
+-- oauth_tokens
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.oauth_tokens (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -249,14 +255,14 @@ COMMENT ON TABLE public.oauth_tokens IS
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- tts_cache  (pre-cached filler phrase audio — NEW)
+-- tts_cache
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.tts_cache (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     cache_key   TEXT        NOT NULL UNIQUE,
     phrase      TEXT        NOT NULL,
     voice_id    TEXT        NOT NULL,
-    audio_b64   TEXT        NOT NULL,    -- base64-encoded PCM audio
+    audio_b64   TEXT        NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     expires_at  TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days')
 );
@@ -266,14 +272,14 @@ CREATE INDEX IF NOT EXISTS idx_tts_cache_expires ON public.tts_cache(expires_at)
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- rag_techniques  (CBT/DBT knowledge base for therapy RAG — NEW)
+-- rag_techniques
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.rag_techniques (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     name        TEXT        NOT NULL,
     description TEXT        NOT NULL,
     example     TEXT,
-    category    TEXT        NOT NULL DEFAULT 'cbt',   -- 'cbt' | 'dbt' | 'general'
+    category    TEXT        NOT NULL DEFAULT 'cbt',
     embedding   vector(1536),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -291,11 +297,13 @@ CREATE TABLE IF NOT EXISTS public.health_check (
     id          INTEGER     PRIMARY KEY DEFAULT 1,
     checked_at  TIMESTAMPTZ DEFAULT NOW()
 );
-INSERT INTO public.health_check (id) VALUES (1) ON CONFLICT DO NOTHING;
+
+INSERT INTO public.health_check (id) VALUES (1)
+ON CONFLICT DO NOTHING;
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Triggers
+-- Triggers / common functions
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.update_updated_at()
 RETURNS TRIGGER AS $$
@@ -305,14 +313,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS tasks_updated_at ON public.tasks;
 CREATE TRIGGER tasks_updated_at
     BEFORE UPDATE ON public.tasks
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
+DROP TRIGGER IF EXISTS profiles_updated_at ON public.user_profiles;
 CREATE TRIGGER profiles_updated_at
     BEFORE UPDATE ON public.user_profiles
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
+DROP TRIGGER IF EXISTS oauth_tokens_updated_at ON public.oauth_tokens;
 CREATE TRIGGER oauth_tokens_updated_at
     BEFORE UPDATE ON public.oauth_tokens
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();

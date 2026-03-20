@@ -40,6 +40,9 @@ env:
   GUARDIAN_ALERT_COOLDOWN_SECONDS: "300"
   RATE_LIMIT_WS_MESSAGES_PER_MIN: "60"
   RATE_LIMIT_API_CALLS_PER_MIN: "100"
+  RATE_LIMIT_HASH_SALT: "dummy-salt-for-ci"
+  OAUTH_STATE_SECRET: "dummy-oauth-secret-for-ci"
+  FRONTEND_BASE_URL: "http://localhost:3000"
 
 jobs:
   # ── Job 1: Lint & Format ───────────────────────────────────────────────────

@@ -1,20 +1,39 @@
 -- ============================================================================
--- BEAN AI v5 — Supabase pg_cron Scheduled Jobs Migration 003
+-- BEAN AI v1 — Supabase pg_cron Scheduled Jobs Migration 003
 -- DB-level data purge (more reliable than app-level background tasks)
 -- ============================================================================
--- Requires: Supabase Pro plan (pg_cron available by default)
--- If on free plan: rely on background/session_cleanup.py app-level jobs instead
--- ============================================================================
+
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+GRANT USAGE ON SCHEMA cron TO postgres;
+
+-- Remove existing jobs if rerun (safe to apply multiple times)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bean-purge-transcripts') THEN
+        PERFORM cron.unschedule('bean-purge-transcripts');
+    END IF;
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bean-purge-emotions') THEN
+        PERFORM cron.unschedule('bean-purge-emotions');
+    END IF;
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bean-purge-episodic') THEN
+        PERFORM cron.unschedule('bean-purge-episodic');
+    END IF;
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bean-cleanup-sessions') THEN
+        PERFORM cron.unschedule('bean-cleanup-sessions');
+    END IF;
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bean-cleanup-rate-limits') THEN
+        PERFORM cron.unschedule('bean-cleanup-rate-limits');
+    END IF;
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bean-purge-tts-cache') THEN
+        PERFORM cron.unschedule('bean-purge-tts-cache');
+    END IF;
+END $$;
+
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Transcript purge — every hour on the hour
 -- Core privacy enforcement: removes 24h-expired conversation text
 -- ─────────────────────────────────────────────────────────────────────────────
--- ENABLE CRON EXTENSION
-
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-GRANT USAGE ON SCHEMA cron TO postgres;
-
 SELECT cron.schedule(
     'bean-purge-transcripts',
     '0 * * * *',
@@ -24,9 +43,10 @@ SELECT cron.schedule(
     $$
 );
 
+
 -- ─────────────────────────────────────────────────────────────────────────────
--- Emotion event purge — daily at 02:00 UTC
--- Removes emotion records older than 90 days
+-- Emotion events purge — daily at 2am UTC
+-- Privacy: emotion data must not persist indefinitely (90-day TTL)
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT cron.schedule(
     'bean-purge-emotions',
@@ -37,9 +57,11 @@ SELECT cron.schedule(
     $$
 );
 
+
 -- ─────────────────────────────────────────────────────────────────────────────
--- Episodic memory expiry — daily at 03:00 UTC
--- Only deletes memories with an explicit expires_at set
+-- Episodic memory purge — daily at 3am UTC
+-- Only deletes rows where expires_at is explicitly set (365-day TTL)
+-- Rows with expires_at IS NULL are kept indefinitely
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT cron.schedule(
     'bean-purge-episodic',
@@ -51,26 +73,29 @@ SELECT cron.schedule(
     $$
 );
 
+
 -- ─────────────────────────────────────────────────────────────────────────────
--- Stale session cleanup — every 6 hours
--- Marks sessions as 'expired' if they've been 'active' for > 24h
--- (handles ESP32 hard resets / disconnects without clean session end)
+-- Session expiry — every 6 hours
+-- FIX: also sets duration_seconds so guardian dashboard stats are not NULL
+--      on force-expired sessions
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT cron.schedule(
     'bean-cleanup-sessions',
     '0 */6 * * *',
     $$
         UPDATE public.sessions
-        SET status = 'expired',
-            ended_at = NOW()
+        SET status           = 'expired',
+            ended_at         = NOW(),
+            duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))::INTEGER
         WHERE status = 'active'
           AND started_at < NOW() - INTERVAL '24 hours';
     $$
 );
 
+
 -- ─────────────────────────────────────────────────────────────────────────────
--- Rate limit cleanup — every hour at :30
--- Removes stale rate limit windows (older than 1 hour)
+-- Rate limit record cleanup — every hour at :30
+-- Removes stale counters older than 1 hour to keep the table small
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT cron.schedule(
     'bean-cleanup-rate-limits',
@@ -83,7 +108,18 @@ SELECT cron.schedule(
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Verify scheduled jobs
+-- TTS cache purge — daily at 4am UTC
+-- FIX: tts_cache has a 7-day expires_at TTL but had no cleanup job
 -- ─────────────────────────────────────────────────────────────────────────────
--- Run this to confirm all jobs are registered:
+SELECT cron.schedule(
+    'bean-purge-tts-cache',
+    '0 4 * * *',
+    $$
+        DELETE FROM public.tts_cache
+        WHERE expires_at < NOW();
+    $$
+);
+
+
+-- Verify after running:
 -- SELECT jobid, jobname, schedule, command FROM cron.job WHERE jobname LIKE 'bean-%';
