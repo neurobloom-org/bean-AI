@@ -1,4 +1,4 @@
-"""BEAN AI v5 — Guardian / Doctor dashboard routes.
+"""BEAN AI v1 — Guardian / Doctor dashboard routes.
 
 Privacy constraints:
   ✓ Guardians see: alerts, emotion graphs, session metadata
