@@ -219,7 +219,7 @@ async def clean_expired_rate_limits() -> int:
         return 0
 
 
-class RateLimiterMiddleware(BaseHTTPMiddleware):
+class RateLimiterMiddleware(BaseHTTPMiddleware):  # type: ignore[misc]
     """HTTP API rate-limiting middleware backed by Supabase."""
 
     async def dispatch(
