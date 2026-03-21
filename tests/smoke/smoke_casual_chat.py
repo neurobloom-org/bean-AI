@@ -13,11 +13,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from google.adk.runners import InMemoryRunner  # noqa: E402
 from google.genai import types as genai_types  # noqa: E402
 
-from agents.casual_chat.agent import (
+from agents.casual_chat.agent import (  # noqa: E402
     casual_chat_agent,
     fallback_response,
     sanitize_response,
-)  # noqa: E402
+)
 
 
 async def run(
