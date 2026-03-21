@@ -20,8 +20,6 @@ from google.adk.events import Event, EventActions
 from services.calendar_service import CalendarService, get_calendar_token
 from services.llm_service import generate_json
 from services.supabase_client import get_service_client
-from shared.config import get_settings
-from shared.schemas import TaskCreate
 
 logger = logging.getLogger(__name__)
 
