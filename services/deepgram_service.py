@@ -18,7 +18,6 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 import websockets
-from websockets.client import ClientProtocol
 from websockets.exceptions import ConnectionClosed
 
 from shared.config import get_settings
@@ -49,7 +48,7 @@ class DeepgramConnection:
         on_utterance_end: Callable[[], Coroutine[Any, Any, None]] | None = None,
     ) -> None:
         self._settings = get_settings()
-        self._ws: ClientProtocol | None = None
+        self._ws: Any | None = None
         self._on_transcript = on_transcript
         self._on_utterance_end = on_utterance_end
         self._receive_task: asyncio.Task[None] | None = None
