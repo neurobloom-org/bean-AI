@@ -38,7 +38,7 @@ Recent route distribution: {route_distribution}
 Recent emotion trend: {emotion_trend}
 
 Classify this message."""
-    
+
 
 def _safe_confidence(value: Any, default: float = 0.8) -> float:
     try:
@@ -58,7 +58,9 @@ def _fallback_route(emotion: str) -> str:
 class RoutingAgent(BaseAgent):
     """Lightweight routing classifier using Gemini Flash."""
 
-    async def _run_async_impl(self, ctx: InvocationContext) -> adk_types.AsyncGenerator:
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> adk_types.AsyncGenerator:
         state = ctx.session.state
 
         user_text = str(state.get("current_transcript", "")).strip()
@@ -70,6 +72,7 @@ class RoutingAgent(BaseAgent):
         if not user_text:
             state["route"] = "casual"
             state["routing_confidence"] = 1.0
+            logger.info("Routing decision: casual (confidence=1.00, empty transcript)")
             yield adk_types.Content(parts=[])
             return
 
@@ -95,7 +98,7 @@ class RoutingAgent(BaseAgent):
             confidence = _safe_confidence(result.get("confidence", 0.8))
 
             if route not in VALID_ROUTES:
-                logger.warning("Invalid route '%s' returned; using safer fallback", route)
+                logger.warning("Invalid route '%s' returned; using fallback", route)
                 route = _fallback_route(emotion)
 
             if confidence < 0.45 and route == "casual":
@@ -103,7 +106,13 @@ class RoutingAgent(BaseAgent):
 
             state["route"] = route
             state["routing_confidence"] = confidence
-            logger.debug("Route decision: %s (confidence=%.2f)", route, confidence)
+
+            logger.info(
+                "Routing decision: %s (confidence=%.2f, emotion=%s)",
+                route,
+                confidence,
+                emotion,
+            )
 
         except Exception as exc:
             fallback = _fallback_route(emotion)
@@ -112,6 +121,6 @@ class RoutingAgent(BaseAgent):
             state["routing_confidence"] = 0.5
 
         yield adk_types.Content(parts=[])
-        
+
 
 routing_agent = RoutingAgent(name="routing_agent")
