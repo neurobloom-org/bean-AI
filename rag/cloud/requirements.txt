@@ -1,0 +1,10 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4
+openai-whisper>=20231117
+groq>=0.4.0
+supabase>2.3.0
+numpy>=1.24.0
+python-dotenv>=1.0.0
