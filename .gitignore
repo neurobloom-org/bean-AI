@@ -47,6 +47,6 @@ models/
 .branches
 .temp
 
-# voice files
+# voice files ──────────────────────────────────────────────────────────────────
 scripts/*.mp3
 scripts/*.wav
