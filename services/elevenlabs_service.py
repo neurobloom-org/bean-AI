@@ -55,10 +55,12 @@ async def stream_tts_to_websocket(
                 await websocket.send_bytes(chunk)
                 chunk_count += 1
 
-        await websocket.send_json({
-            "type": "response_audio_end",
-            "turn_id": turn_id,
-        })
+        await websocket.send_json(
+            {
+                "type": "response_audio_end",
+                "turn_id": turn_id,
+            }
+        )
         logger.debug("TTS streamed: %d chunks for turn %s", chunk_count, turn_id[:8])
 
     except Exception as exc:
@@ -89,9 +91,7 @@ async def synthesize_speech_full(text: str, turn_id: str) -> bytes:
             if chunk:
                 audio_bytes += chunk
 
-        logger.debug(
-            "TTS full: %d bytes for turn %s", len(audio_bytes), turn_id[:8]
-        )
+        logger.debug("TTS full: %d bytes for turn %s", len(audio_bytes), turn_id[:8])
         return audio_bytes
 
     except Exception as exc:

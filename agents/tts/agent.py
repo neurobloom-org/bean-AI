@@ -52,16 +52,16 @@ _RESERVED_CACHE_SAVE_KEYS: set[str] = set()
 # ---------------------------------------------------------------------------
 
 try:
-    _FULL_SUPPORTS_VOICE_ID = "voice_id" in inspect.signature(
-        synthesize_speech_full
-    ).parameters
+    _FULL_SUPPORTS_VOICE_ID = (
+        "voice_id" in inspect.signature(synthesize_speech_full).parameters
+    )
 except (TypeError, ValueError):
     _FULL_SUPPORTS_VOICE_ID = False
 
 try:
-    _STREAM_SUPPORTS_VOICE_ID = "voice_id" in inspect.signature(
-        synthesize_speech_stream
-    ).parameters
+    _STREAM_SUPPORTS_VOICE_ID = (
+        "voice_id" in inspect.signature(synthesize_speech_stream).parameters
+    )
 except (TypeError, ValueError):
     _STREAM_SUPPORTS_VOICE_ID = False
 
@@ -69,6 +69,7 @@ except (TypeError, ValueError):
 # ---------------------------------------------------------------------------
 # Validation and normalization helpers
 # ---------------------------------------------------------------------------
+
 
 def _sanitize_for_log(value: str, max_length: int = 120) -> str:
     """Return a shortened log-safe representation."""
@@ -212,6 +213,7 @@ def _build_error_response(exc: Exception) -> dict[str, Any]:
 # Background task helpers
 # ---------------------------------------------------------------------------
 
+
 def _track_background_task(task: asyncio.Task[Any]) -> None:
     """Track a background task until completion."""
     _BACKGROUND_TASKS.add(task)
@@ -279,6 +281,7 @@ def _schedule_background_cache_save(
 # Cache helpers
 # ---------------------------------------------------------------------------
 
+
 async def get_cached_tts(cache_key: str) -> str | None:
     """Return base64-encoded audio from the Supabase TTS cache."""
     if not isinstance(cache_key, str) or not cache_key.strip():
@@ -307,7 +310,9 @@ async def get_cached_tts(cache_key: str) -> str | None:
 
         # isinstance check lets mypy narrow the type to str — no cast needed
         if not isinstance(audio_b64, str) or not audio_b64.strip():
-            logger.warning("Ignoring invalid cached audio payload for key=%s", cache_key)
+            logger.warning(
+                "Ignoring invalid cached audio payload for key=%s", cache_key
+            )
             return None
 
         return audio_b64  # mypy now knows this is str, not Any
@@ -363,6 +368,7 @@ async def get_cached_filler_audio(cache_key: str) -> str | None:
 # ElevenLabs full-audio helpers
 # ---------------------------------------------------------------------------
 
+
 async def _call_synthesize_speech_full(
     *,
     text: str,
@@ -389,6 +395,7 @@ async def _call_synthesize_speech_full(
 # ---------------------------------------------------------------------------
 # Public full-audio API
 # ---------------------------------------------------------------------------
+
 
 async def synthesize_speech(
     text: str,
@@ -454,6 +461,7 @@ async def synthesize_speech(
 # ---------------------------------------------------------------------------
 # ElevenLabs streaming helpers
 # ---------------------------------------------------------------------------
+
 
 def _build_stream_kwargs(*, turn_id: str, voice_id: str) -> dict[str, Any]:
     """Build kwargs for streaming service invocation."""
@@ -523,6 +531,7 @@ async def _iterate_synthesize_speech_stream(
 # ---------------------------------------------------------------------------
 # Public streaming API
 # ---------------------------------------------------------------------------
+
 
 async def stream_tts_chunks(
     text: str,

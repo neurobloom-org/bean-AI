@@ -7,6 +7,7 @@ from agents.tts.agent import _validate_tts_chunk
 
 # ── _validate_tts_chunk tests ────────────────────────────────────────────────
 
+
 def test_validate_tts_chunk_passes_valid_chunk():
     """Valid TTSChunk with audio_chunk bytes should pass through unchanged."""
     chunk = TTSChunk(audio_chunk=b"\x00\x01\x02", is_final=False, turn_id="abc")

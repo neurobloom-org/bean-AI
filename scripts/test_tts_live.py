@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Load .env before importing anything from the project
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # Minimal env check before going further
