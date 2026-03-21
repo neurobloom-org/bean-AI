@@ -105,6 +105,7 @@ USER'S CURRENT EMOTION: {current_emotion}
 
 Respond as BEAN. Maximum 2 sentences."""
 
+
 CASUAL_CHAT_INSTRUCTION: Final[str] = _build_instruction()
 
 
@@ -161,7 +162,9 @@ def _verbalize(text: str) -> str:
 
 
 def _split(text: str) -> list[str]:
-    return [segment.strip() for segment in _SENTENCE_SPLIT_RE.split(text) if segment.strip()]
+    return [
+        segment.strip() for segment in _SENTENCE_SPLIT_RE.split(text) if segment.strip()
+    ]
 
 
 def _limit_sentences(text: str) -> str:

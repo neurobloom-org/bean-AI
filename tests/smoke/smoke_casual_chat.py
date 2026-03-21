@@ -1,12 +1,11 @@
 """Smoke test — actually runs the agent against Gemini Flash."""
 
-
-
 import asyncio
 import os
 import sys
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,10 +13,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from google.adk.runners import InMemoryRunner  # noqa: E402
 from google.genai import types as genai_types  # noqa: E402
 
-from agents.casual_chat.agent import casual_chat_agent, fallback_response, sanitize_response  # noqa: E402
+from agents.casual_chat.agent import (
+    casual_chat_agent,
+    fallback_response,
+    sanitize_response,
+)  # noqa: E402
 
 
-async def run(user_text: str, emotion: str, memory: str = "No memory context yet.") -> str:
+async def run(
+    user_text: str, emotion: str, memory: str = "No memory context yet."
+) -> str:
     runner = InMemoryRunner(agent=casual_chat_agent)
 
     session = await runner.session_service.create_session(
@@ -43,14 +48,19 @@ async def run(user_text: str, emotion: str, memory: str = "No memory context yet
                 if part.text:
                     response_text = part.text
 
-    return sanitize_response(response_text, emotion) if response_text.strip() else fallback_response(emotion)
+    return (
+        sanitize_response(response_text, emotion)
+        if response_text.strip()
+        else fallback_response(emotion)
+    )
+
 
 async def main():
     cases = [
-        ("hey what's up",               "neutral", "No memory context yet."),
-        ("I had the worst day",          "sad",     "No memory context yet."),
-        ("I just got an A on my test!",  "happy",   "User profile:\nName: Isara"),
-        ("I'm so angry at my friend",    "angry",   "No memory context yet."),
+        ("hey what's up", "neutral", "No memory context yet."),
+        ("I had the worst day", "sad", "No memory context yet."),
+        ("I just got an A on my test!", "happy", "User profile:\nName: Isara"),
+        ("I'm so angry at my friend", "angry", "No memory context yet."),
     ]
 
     for text, emotion, memory in cases:
