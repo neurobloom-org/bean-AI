@@ -5,12 +5,16 @@ to the ESP32 WebSocket. It is NEVER written to Supabase Storage or any disk.
 """
 
 import logging
-from fastapi import WebSocket
+
 from elevenlabs import AsyncElevenLabs
+from fastapi import WebSocket
+
 from shared.config import get_settings
 from shared.exceptions import ElevenLabsError
+from shared.schemas import TTSChunk
 
 logger = logging.getLogger(__name__)
+
 _client: AsyncElevenLabs | None = None
 
 
@@ -27,9 +31,9 @@ async def stream_tts_to_websocket(
     websocket: WebSocket,
     turn_id: str,
 ) -> None:
-    """Generate TTS for text and stream audio chunks to the ESP32 WebSocket.
+    """Generate TTS and stream audio chunks directly to the ESP32 WebSocket.
 
-    Chunks are sent as binary WebSocket frames with a JSON header prefix.
+    Chunks are sent as binary WebSocket frames.
     Audio is never stored — it exists only in transit.
     """
     if not text.strip():
@@ -39,28 +43,22 @@ async def stream_tts_to_websocket(
     client = _get_client()
 
     try:
-        audio_stream = await client.generate(
-            text=text,
-            voice=settings.elevenlabs_voice_id,
-            model=settings.elevenlabs_model_id,
-            stream=True,
-        )
-
         chunk_count = 0
-        async for chunk in audio_stream:
+
+        # convert() on AsyncElevenLabs is an async generator — iterate with async for
+        async for chunk in client.text_to_speech.convert(
+            voice_id=settings.elevenlabs_voice_id,
+            text=text,
+            model_id=settings.elevenlabs_model_id,
+        ):
             if chunk:
-                # Send audio chunk as binary frame
-                # ESP32 identifies it as audio by the "response_audio" prefix message
                 await websocket.send_bytes(chunk)
                 chunk_count += 1
 
-        # Signal end of audio for this turn
-        await websocket.send_json(
-            {
-                "type": "response_audio_end",
-                "turn_id": turn_id,
-            }
-        )
+        await websocket.send_json({
+            "type": "response_audio_end",
+            "turn_id": turn_id,
+        })
         logger.debug("TTS streamed: %d chunks for turn %s", chunk_count, turn_id[:8])
 
     except Exception as exc:
@@ -69,9 +67,8 @@ async def stream_tts_to_websocket(
 
 
 async def synthesize_speech_full(text: str, turn_id: str) -> bytes:
-    """Generate complete TTS audio and return as bytes.
+    """Generate complete TTS audio and return as raw bytes.
 
-    Used when full audio is needed before sending.
     Audio is never stored — exists only in memory.
     """
     if not text.strip():
@@ -81,17 +78,20 @@ async def synthesize_speech_full(text: str, turn_id: str) -> bytes:
     client = _get_client()
 
     try:
-        audio_stream = await client.generate(
-            text=text,
-            voice=settings.elevenlabs_voice_id,
-            model=settings.elevenlabs_model_id,
-            stream=True,
-        )
         audio_bytes = b""
-        async for chunk in audio_stream:
+
+        # convert() is an async generator — accumulate all chunks into bytes
+        async for chunk in client.text_to_speech.convert(
+            voice_id=settings.elevenlabs_voice_id,
+            text=text,
+            model_id=settings.elevenlabs_model_id,
+        ):
             if chunk:
                 audio_bytes += chunk
-        logger.debug("TTS full: %d bytes for turn %s", len(audio_bytes), turn_id[:8])
+
+        logger.debug(
+            "TTS full: %d bytes for turn %s", len(audio_bytes), turn_id[:8]
+        )
         return audio_bytes
 
     except Exception as exc:
@@ -103,10 +103,13 @@ async def synthesize_speech_stream(
     text: str,
     turn_id: str,
 ):
-    """Async generator that yields TTS audio chunks.
+    """Async generator that yields TTSChunk objects.
 
-    Used for streaming audio directly to ESP32.
+    Used for streaming audio directly to the ESP32.
     Audio is never stored — exists only in transit.
+
+    Yields:
+        TTSChunk with audio_chunk bytes and is_final flag.
     """
     if not text.strip():
         return
@@ -115,15 +118,23 @@ async def synthesize_speech_stream(
     client = _get_client()
 
     try:
-        audio_stream = await client.generate(
+        # Collect all chunks first so we can mark the last one as is_final
+        chunks = []
+        async for chunk in client.text_to_speech.convert(
+            voice_id=settings.elevenlabs_voice_id,
             text=text,
-            voice=settings.elevenlabs_voice_id,
-            model=settings.elevenlabs_model_id,
-            stream=True,
-        )
-        async for chunk in audio_stream:
+            model_id=settings.elevenlabs_model_id,
+        ):
             if chunk:
-                yield chunk
+                chunks.append(chunk)
+
+        total = len(chunks)
+        for i, chunk in enumerate(chunks):
+            yield TTSChunk(
+                audio_chunk=chunk,
+                is_final=(i == total - 1),
+                turn_id=turn_id,
+            )
 
     except Exception as exc:
         logger.error("TTS stream failed: %s", exc)
