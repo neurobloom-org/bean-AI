@@ -132,7 +132,9 @@ class AlertAgent(BaseAgent):
         last_three = normalized_recent[-3:]
         negative_labels = {emotion.value for emotion in EmotionLabel.negative()}
 
-        if len(last_three) == 3 and all(label in negative_labels for label in last_three):
+        if len(last_three) == 3 and all(
+            label in negative_labels for label in last_three
+        ):
             active_factors.append(AlertFactor.F3_ESCALATION.value)
 
         if is_minor:
@@ -160,7 +162,10 @@ class AlertAgent(BaseAgent):
             active_factors,
         )
 
-        if alert_level in (AlertLevel.HIGH, AlertLevel.CRISIS) and not already_dispatched:
+        if (
+            alert_level in (AlertLevel.HIGH, AlertLevel.CRISIS)
+            and not already_dispatched
+        ):
             await self._dispatch_alert(
                 ctx=ctx,
                 active_factors=active_factors,
