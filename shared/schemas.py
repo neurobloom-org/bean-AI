@@ -377,3 +377,12 @@ class PurgeResult(BaseModel):
     sessions: str
     rate_limits: str
     ran_at: UtcDatetime = Field(default_factory=utcnow)
+
+
+class TTSChunk(BaseModel):
+    """Audio chunk streamed from ElevenLabs TTS to ESP32."""
+
+    type: Literal["response_audio"] = "response_audio"
+    audio_chunk: bytes
+    is_final: bool = False
+    turn_id: str
