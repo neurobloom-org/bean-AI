@@ -1,0 +1,29 @@
+# Environment - never commit API keys
+.env
+*.env
+
+# Dataset files - too large for GitHub
+*.csv
+*.json
+!cloud/.env.example
+
+# FAISS index - generated artifacts
+faiss_index.bin
+chunks.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# VS Code
+.vscode/
+
+# Build artifacts
+build_report.txt
+test_index.bin
+test_chunks.json
+
+# Logs
+*.log
