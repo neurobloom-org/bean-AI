@@ -1,7 +1,6 @@
 """Targeted tests for agents/tts/agent.py — validate _validate_tts_chunk fix."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from shared.schemas import TTSChunk
 from agents.tts.agent import _validate_tts_chunk
 
