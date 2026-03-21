@@ -286,6 +286,7 @@ async def get_cached_tts(cache_key: str) -> str | None:
 
     try:
         client = await get_service_client()
+        # AFTER
         result = await asyncio.wait_for(
             client.table("tts_cache")
             .select("audio_b64")
@@ -295,15 +296,21 @@ async def get_cached_tts(cache_key: str) -> str | None:
             timeout=_CACHE_TIMEOUT_SECONDS,
         )
 
-        if not result.data:
+        # Guard: result or result.data may be None (mypy union-attr fix)
+        if result is None or not result.data:
             return None
 
-        audio_b64 = result.data.get("audio_b64")
+        data = result.data
+        if not isinstance(data, dict):
+            return None
+
+        audio_b64 = data.get("audio_b64")
         if not _is_plausible_base64_string(audio_b64):
             logger.warning("Ignoring invalid cached audio payload for key=%s", cache_key)
             return None
 
-        return audio_b64
+        # mypy return-value fix: explicit cast to str after validation
+        return str(audio_b64)
 
     except asyncio.TimeoutError:
         logger.warning("TTS cache lookup timed out for key=%s", cache_key)
