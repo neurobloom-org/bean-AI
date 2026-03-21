@@ -17,7 +17,7 @@ from collections.abc import AsyncGenerator
 from google import genai
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
-from google.adk.events import Event
+from google.adk.events import Event, EventActions
 
 from services.rag_service import format_techniques_for_prompt, retrieve_cbt_techniques
 from services.safety_service import check_crisis_keywords, check_explicit_statement
@@ -73,9 +73,9 @@ class TherapeuticConvoAgent(BaseAgent):
             )
             yield Event(
                 author=self.name,
-                actions={
-                    "state_delta": {"response_text": ctx.session.state["response_text"]}
-                },
+                actions=EventActions(
+                    state_delta={"response_text": ctx.session.state["response_text"]}
+                ),
             )
             return
 
@@ -115,7 +115,7 @@ class TherapeuticConvoAgent(BaseAgent):
 
         yield Event(
             author=self.name,
-            actions={"state_delta": {"response_text": response_text}},
+            actions=EventActions(state_delta={"response_text": response_text}),
         )
 
     def _run_safety_check(self, ctx: InvocationContext, transcript: str) -> None:
