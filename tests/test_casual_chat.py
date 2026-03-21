@@ -1,6 +1,5 @@
 """Unit tests for casual_chat_agent sanitize pipeline."""
 
-import pytest
 from agents.casual_chat.agent import (
     sanitize_response,
     fallback_response,

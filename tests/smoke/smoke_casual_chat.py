@@ -11,10 +11,10 @@ load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from google.adk.runners import InMemoryRunner
-from google.genai import types as genai_types
+from google.adk.runners import InMemoryRunner  # noqa: E402
+from google.genai import types as genai_types  # noqa: E402
 
-from agents.casual_chat.agent import casual_chat_agent, fallback_response, sanitize_response
+from agents.casual_chat.agent import casual_chat_agent, fallback_response, sanitize_response  # noqa: E402
 
 
 async def run(user_text: str, emotion: str, memory: str = "No memory context yet.") -> str:
