@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
-from google.adk.events import Event
+from google.adk.events import Event, EventActions
 
 from services.safety_service import (
     check_crisis_keywords,
@@ -132,9 +132,7 @@ class AlertAgent(BaseAgent):
         last_three = normalized_recent[-3:]
         negative_labels = {emotion.value for emotion in EmotionLabel.negative()}
 
-        if len(last_three) == 3 and all(
-            label in negative_labels for label in last_three
-        ):
+        if len(last_three) == 3 and all(label in negative_labels for label in last_three):
             active_factors.append(AlertFactor.F3_ESCALATION.value)
 
         if is_minor:
@@ -162,10 +160,7 @@ class AlertAgent(BaseAgent):
             active_factors,
         )
 
-        if (
-            alert_level in (AlertLevel.HIGH, AlertLevel.CRISIS)
-            and not already_dispatched
-        ):
+        if alert_level in (AlertLevel.HIGH, AlertLevel.CRISIS) and not already_dispatched:
             await self._dispatch_alert(
                 ctx=ctx,
                 active_factors=active_factors,
@@ -174,12 +169,12 @@ class AlertAgent(BaseAgent):
 
         yield Event(
             author=self.name,
-            actions={
-                "state_delta": {
+            actions=EventActions(
+                state_delta={
                     "alert_level": alert_level.value,
                     "alert_active_count": str(active_count),
                 }
-            },
+            ),
         )
 
     async def _dispatch_alert(
@@ -210,21 +205,42 @@ class AlertAgent(BaseAgent):
                 .maybe_single()
                 .execute()
             )
-            display_name = (profile_result.data or {}).get(
-                "display_name", "your patient"
+
+            profile_data = profile_result.data if profile_result is not None else None
+            display_name: str = (
+                str(profile_data.get("display_name", "your patient"))
+                if isinstance(profile_data, dict)
+                else "your patient"
             )
 
             sms_sent = False
             guardian_notified_at = None
 
-            for link in guardian_result.data or []:
+            guardian_data = guardian_result.data if guardian_result is not None else []
+
+            for link in guardian_data or []:
+                if not isinstance(link, dict):
+                    continue
+
                 guardian_id = link.get("guardian_user_id")
                 if not guardian_id:
                     continue
 
                 try:
-                    guardian_auth = await client.auth.admin.get_user_by_id(guardian_id)
-                    phone = (guardian_auth.user.user_metadata or {}).get("phone")
+                    guardian_auth = await client.auth.admin.get_user_by_id(
+                        str(guardian_id)
+                    )
+                    user_metadata = (
+                        guardian_auth.user.user_metadata
+                        if guardian_auth.user is not None
+                        else None
+                    )
+                    phone: str | None = (
+                        str(user_metadata.get("phone"))
+                        if isinstance(user_metadata, dict)
+                        and user_metadata.get("phone") is not None
+                        else None
+                    )
 
                     if not phone:
                         logger.warning(
