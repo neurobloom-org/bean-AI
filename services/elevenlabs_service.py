@@ -66,3 +66,65 @@ async def stream_tts_to_websocket(
     except Exception as exc:
         logger.error("TTS streaming failed: %s", exc)
         raise ElevenLabsError(f"TTS failed: {exc}") from exc
+
+
+async def synthesize_speech_full(text: str, turn_id: str) -> bytes:
+    """Generate complete TTS audio and return as bytes.
+
+    Used when full audio is needed before sending.
+    Audio is never stored — exists only in memory.
+    """
+    if not text.strip():
+        return b""
+
+    settings = get_settings()
+    client = _get_client()
+
+    try:
+        audio_stream = await client.generate(
+            text=text,
+            voice=settings.elevenlabs_voice_id,
+            model=settings.elevenlabs_model_id,
+            stream=True,
+        )
+        audio_bytes = b""
+        async for chunk in audio_stream:
+            if chunk:
+                audio_bytes += chunk
+        logger.debug("TTS full: %d bytes for turn %s", len(audio_bytes), turn_id[:8])
+        return audio_bytes
+
+    except Exception as exc:
+        logger.error("TTS full generation failed: %s", exc)
+        raise ElevenLabsError(f"TTS failed: {exc}") from exc
+
+
+async def synthesize_speech_stream(
+    text: str,
+    turn_id: str,
+):
+    """Async generator that yields TTS audio chunks.
+
+    Used for streaming audio directly to ESP32.
+    Audio is never stored — exists only in transit.
+    """
+    if not text.strip():
+        return
+
+    settings = get_settings()
+    client = _get_client()
+
+    try:
+        audio_stream = await client.generate(
+            text=text,
+            voice=settings.elevenlabs_voice_id,
+            model=settings.elevenlabs_model_id,
+            stream=True,
+        )
+        async for chunk in audio_stream:
+            if chunk:
+                yield chunk
+
+    except Exception as exc:
+        logger.error("TTS stream failed: %s", exc)
+        raise ElevenLabsError(f"TTS stream failed: {exc}") from exc
