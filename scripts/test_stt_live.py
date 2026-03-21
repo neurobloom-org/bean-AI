@@ -14,13 +14,15 @@ What it proves:
 import asyncio
 import os
 import sys
-import wave
 import struct
+
+from dotenv import load_dotenv
+from services.deepgram_service import DeepgramConnection
+from shared.schemas import TranscriptResult
 
 # Add project root to path so imports work
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dotenv import load_dotenv
 load_dotenv()
 
 from services.deepgram_service import DeepgramConnection

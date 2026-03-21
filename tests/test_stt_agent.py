@@ -4,7 +4,6 @@ Deepgram WebSocket is fully mocked — no real API calls, no internet required.
 Run with: make test
 """
 
-import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
