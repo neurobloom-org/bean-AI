@@ -109,15 +109,19 @@ class TaskAgent(BaseAgent):
 
         try:
             client = await get_service_client()
-            await client.table("tasks").insert(
-                {
-                    "user_id": user_id,
-                    "title": title,
-                    "due_at": due_at.isoformat() if due_at else None,
-                    "status": "pending",
-                    "created_at": datetime.now(UTC).isoformat(),
-                }
-            ).execute()
+            await (
+                client.table("tasks")
+                .insert(
+                    {
+                        "user_id": user_id,
+                        "title": title,
+                        "due_at": due_at.isoformat() if due_at else None,
+                        "status": "pending",
+                        "created_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+                .execute()
+            )
 
             # Try Google Calendar if token available
             token = await get_calendar_token(user_id)
@@ -186,9 +190,13 @@ class TaskAgent(BaseAgent):
 
         try:
             client = await get_service_client()
-            await client.table("tasks").delete().eq("id", task_id).eq(
-                "user_id", user_id
-            ).execute()
+            await (
+                client.table("tasks")
+                .delete()
+                .eq("id", task_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
             return "Done! I've removed that task."
         except Exception as exc:
             logger.error("Task delete failed: %s", exc)
