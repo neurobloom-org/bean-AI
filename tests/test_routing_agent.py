@@ -18,19 +18,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agents.routing.agent import (
-    ALERT_CONFIDENCE_FLOOR,
     DEFAULT_CONFIDENCE,
-    DEFAULT_ROUTE,
     EMPTY_TRANSCRIPT_CONFIDENCE,
     MAX_TRANSCRIPT_CHARS,
     RoutingAgent,
     _apply_alert_confidence_floor,
     _normalize_emotion,
     _normalize_route_distribution,
-    _read_session_inputs,
     _RoutingDecision,
     _sanitize_user_text,
-    _serialize_route_distribution,
     routing_agent,
 )
 from shared.enums import RouteType
@@ -278,7 +274,7 @@ class TestTimeout:
         assert result["routing_used_fallback"] is True
         assert result["routing_failure_reason"] == "timeout"
     @pytest.mark.asyncio
-    async def test_timeout_triggers_fallback(self) -> None:
+    async def test_timeout_triggers_fallback_retry(self) -> None:
         """LLM call that times out → fallback to casual."""
         state: dict[str, Any] = {
             "current_transcript": "what time is it?",
