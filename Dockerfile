@@ -47,7 +47,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 EXPOSE 8080
 
 # Command to start the development server with auto-reload
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
 
 # ── Stage 3: Production ───────────────────────────────────────────────────────
 FROM python:3.12-slim AS production
@@ -87,4 +87,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v1/health')"
 
 # Command to run the API server in production with a single worker
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--log-level", "info"]
+CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--log-level", "info"]

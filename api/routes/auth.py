@@ -38,7 +38,7 @@ try:
     # Supabase Python auth errors are wrapped in AuthError according to docs.
     from gotrue.errors import AuthError
 except Exception:  # pragma: no cover
-    AuthError = Exception  # type: ignore[assignment, misc]
+    AuthError = Exception
 
 
 logger = logging.getLogger(__name__)

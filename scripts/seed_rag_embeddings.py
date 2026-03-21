@@ -427,7 +427,7 @@ async def resolve_embedding_functions() -> tuple[Any, Any]:
     (singular). batch_fn will be None and the worker pool path will always be
     used. If get_embeddings is added later, batch mode activates automatically.
     """
-    from services import embedding_service  # type: ignore[attr-defined]
+    from services import embedding_service
 
     single_fn = getattr(embedding_service, "get_embedding", None)
     batch_fn = getattr(embedding_service, "get_embeddings", None)

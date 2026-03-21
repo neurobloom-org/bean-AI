@@ -527,9 +527,9 @@ async def get_patient_overview(
             ),
             emotion_summary_7d=[EmotionSummaryPoint(**row) for row in emotion_rows],
             recent_alerts=[GuardianAlertSummary(**row) for row in alert_rows],
-            sessions_this_week=int(current_week["session_count"])
-            if current_week
-            else 0,
+            sessions_this_week=(
+                int(current_week["session_count"]) if current_week else 0
+            ),
             total_duration_this_week_seconds=(
                 int(current_week["total_duration_seconds"]) if current_week else 0
             ),

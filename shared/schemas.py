@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from uuid import UUID
 
-
 # ── Timezone-aware datetime alias ─────────────────────────────────────────────
 UtcDatetime = Annotated[datetime, Field(default_factory=lambda: datetime.now(UTC))]
 
@@ -378,3 +377,12 @@ class PurgeResult(BaseModel):
     sessions: str
     rate_limits: str
     ran_at: UtcDatetime = Field(default_factory=utcnow)
+
+
+class TTSChunk(BaseModel):
+    """Audio chunk streamed from ElevenLabs TTS to ESP32."""
+
+    type: Literal["response_audio"] = "response_audio"
+    audio_chunk: bytes
+    is_final: bool = False
+    turn_id: str

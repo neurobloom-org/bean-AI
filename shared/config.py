@@ -3,7 +3,7 @@
 from pydantic_settings import BaseSettings
 
 
-class Settings(BaseSettings):
+class Settings(BaseSettings):  # type: ignore[misc]
     # ── Application ──────────────────────────────────────────────────────────
     app_name: str = "BEAN AI"
     app_version: str = "1.0.0"
@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     episodic_memory_retention_days: int = (
         365  # FIX: was episodic_memory_expiry_days in some files
     )
+    session_retention_days: int = 30
     session_metadata_retention_days: int = 730
 
     # ── Safety ───────────────────────────────────────────────────────────────
