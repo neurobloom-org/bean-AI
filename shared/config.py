@@ -3,7 +3,7 @@
 from pydantic_settings import BaseSettings
 
 
-class Settings(BaseSettings):
+class Settings(BaseSettings):  # type: ignore[misc]
     # ── Application ──────────────────────────────────────────────────────────
     app_name: str = "BEAN AI"
     app_version: str = "1.0.0"
