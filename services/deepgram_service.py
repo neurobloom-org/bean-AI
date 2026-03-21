@@ -127,7 +127,7 @@ class DeepgramConnection:
                 ping_interval=self._settings.ws_ping_interval_seconds,
                 ping_timeout=10,
                 close_timeout=5,
-                max_size=2 ** 20,  # 1MB max inbound message size
+                max_size=2**20,  # 1MB max inbound message size
             )
             self._connected = True
             self._closing = False
@@ -290,9 +290,7 @@ class DeepgramConnection:
         except Exception as exc:
             logger.error("send_keepalive unexpected error: %s", exc)
             self._connected = False
-            raise DeepgramConnectionError(
-                f"Keepalive send failed: {exc}"
-            ) from exc
+            raise DeepgramConnectionError(f"Keepalive send failed: {exc}") from exc
 
     # ─────────────────────────────────────────────────────────────────────────
     # Receive loop
@@ -340,14 +338,14 @@ class DeepgramConnection:
                         )
 
                     else:
-                        logger.debug(
-                            "Deepgram unrecognised message type: %s", msg_type
-                        )
+                        logger.debug("Deepgram unrecognised message type: %s", msg_type)
 
                 except json.JSONDecodeError:
                     logger.warning(
                         "Deepgram sent a non-JSON message — ignoring (len=%d)",
-                        len(raw_message) if isinstance(raw_message, (str, bytes)) else -1,
+                        len(raw_message)
+                        if isinstance(raw_message, (str, bytes))
+                        else -1,
                     )
                 except Exception:
                     logger.exception("Unhandled error processing Deepgram message")
@@ -363,9 +361,7 @@ class DeepgramConnection:
                 await self._try_reconnect()
 
         except Exception:
-            logger.exception(
-                "Deepgram receive loop encountered an unexpected error"
-            )
+            logger.exception("Deepgram receive loop encountered an unexpected error")
             self._connected = False
 
     async def _handle_results(self, data: dict[str, Any]) -> None:
@@ -394,7 +390,9 @@ class DeepgramConnection:
             speech_final = data.get("speech_final", False)
 
             result = TranscriptResult(
-                type="transcript_final" if (is_final or speech_final) else "transcript_partial",
+                type="transcript_final"
+                if (is_final or speech_final)
+                else "transcript_partial",
                 text=text,
                 confidence=confidence,
                 is_final=is_final or speech_final,

@@ -21,6 +21,7 @@ from agents.stt.agent import (
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def make_mock_connection(is_connected: bool = True) -> MagicMock:
     """Build a fake DeepgramConnection with controllable state."""
     conn = MagicMock()
@@ -36,7 +37,7 @@ def make_mock_connection(is_connected: bool = True) -> MagicMock:
 @pytest.fixture(autouse=True)
 async def clean_registry():
     """Wipe the module-level session registry before and after every test.
-    
+
     Without this, state leaks between tests and causes false passes/failures.
     """
     _active_sessions.clear()
@@ -49,6 +50,7 @@ async def clean_registry():
 # ─────────────────────────────────────────────────────────────────────────────
 # stream_audio_chunk — the hot path
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_stream_audio_no_session_returns_no_connection():
@@ -71,6 +73,7 @@ async def test_stream_audio_empty_chunk_returns_invalid_input():
 @pytest.mark.asyncio
 async def test_stream_audio_disconnected_connection_returns_disconnected():
     from agents.stt.agent import DeepgramSession
+
     conn = make_mock_connection(is_connected=False)
     session = DeepgramSession(session_id="session-abc", connection=conn)
     _active_sessions["session-abc"] = session
@@ -82,6 +85,7 @@ async def test_stream_audio_disconnected_connection_returns_disconnected():
 @pytest.mark.asyncio
 async def test_stream_audio_sends_and_returns_audio_sent():
     from agents.stt.agent import DeepgramSession
+
     conn = make_mock_connection(is_connected=True)
     session = DeepgramSession(session_id="session-abc", connection=conn)
     _active_sessions["session-abc"] = session
@@ -96,6 +100,7 @@ async def test_stream_audio_sends_and_returns_audio_sent():
 # ─────────────────────────────────────────────────────────────────────────────
 # deepgram_transcribe — the ADK fallback path
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_deepgram_transcribe_empty_session_id():
@@ -126,6 +131,7 @@ async def test_deepgram_transcribe_no_connection():
 @pytest.mark.asyncio
 async def test_deepgram_transcribe_sends_decoded_bytes():
     from agents.stt.agent import DeepgramSession
+
     conn = make_mock_connection(is_connected=True)
     session = DeepgramSession(session_id="session-abc", connection=conn)
     _active_sessions["session-abc"] = session
@@ -141,6 +147,7 @@ async def test_deepgram_transcribe_sends_decoded_bytes():
 # close_deepgram_connection
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_close_nonexistent_session_does_not_raise():
     # Must not raise — safe to call even if session never existed
@@ -155,6 +162,7 @@ async def test_close_empty_session_id_does_not_raise():
 @pytest.mark.asyncio
 async def test_close_removes_session_from_registry():
     from agents.stt.agent import DeepgramSession
+
     conn = make_mock_connection(is_connected=True)
     session = DeepgramSession(session_id="session-abc", connection=conn)
     _active_sessions["session-abc"] = session
@@ -168,6 +176,7 @@ async def test_close_removes_session_from_registry():
 @pytest.mark.asyncio
 async def test_after_close_transcribe_returns_no_connection():
     from agents.stt.agent import DeepgramSession
+
     conn = make_mock_connection(is_connected=True)
     session = DeepgramSession(session_id="session-abc", connection=conn)
     _active_sessions["session-abc"] = session
@@ -182,6 +191,7 @@ async def test_after_close_transcribe_returns_no_connection():
 # create_deepgram_connection
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_create_raises_on_empty_session_id():
     with pytest.raises(ValueError, match="session_id must not be empty"):
@@ -192,12 +202,8 @@ async def test_create_raises_on_empty_session_id():
 async def test_create_stores_session_in_registry():
     mock_conn = make_mock_connection(is_connected=True)
 
-    with patch(
-        "agents.stt.agent.DeepgramConnection", return_value=mock_conn
-    ):
-        conn = await create_deepgram_connection(
-            "session-abc", AsyncMock(), AsyncMock()
-        )
+    with patch("agents.stt.agent.DeepgramConnection", return_value=mock_conn):
+        conn = await create_deepgram_connection("session-abc", AsyncMock(), AsyncMock())
 
     assert "session-abc" in _active_sessions
     assert conn is mock_conn
@@ -206,6 +212,7 @@ async def test_create_stores_session_in_registry():
 @pytest.mark.asyncio
 async def test_create_reuses_existing_healthy_connection():
     from agents.stt.agent import DeepgramSession
+
     conn = make_mock_connection(is_connected=True)
     session = DeepgramSession(session_id="session-abc", connection=conn)
     _active_sessions["session-abc"] = session

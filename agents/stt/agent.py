@@ -69,6 +69,7 @@ DISCONNECTED_LOG_INTERVAL_SECONDS = 5.0
 # Per-session state
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass(slots=True)
 class DeepgramSession:
     """All Deepgram state for one active BEAN session.
@@ -116,6 +117,7 @@ _sessions_lock = asyncio.Lock()
 # ─────────────────────────────────────────────────────────────────────────────
 # Internal helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 async def _close_connection_safely(
     connection: DeepgramConnection,
@@ -308,6 +310,7 @@ async def _build_session(
 # Public lifecycle API  (called by orchestrator / FastAPI WS handler)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def create_deepgram_connection(
     session_id: str,
     on_transcript: Callable[[TranscriptResult], Coroutine[Any, Any, None]],
@@ -443,7 +446,9 @@ async def close_deepgram_connection(session_id: str) -> None:
         session_id: Session to close.
     """
     if not session_id:
-        logger.warning("close_deepgram_connection called with empty session_id — ignoring")
+        logger.warning(
+            "close_deepgram_connection called with empty session_id — ignoring"
+        )
         return
 
     async with _sessions_lock:
@@ -487,6 +492,7 @@ def get_deepgram_connection(session_id: str) -> DeepgramConnection | None:
 # Production hot path — raw bytes from FastAPI WebSocket binary frames
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def stream_audio_chunk(
     session_id: str,
     audio_chunk: bytes,
@@ -515,7 +521,9 @@ async def stream_audio_chunk(
     """
     # ── Input validation ───────────────────────────────────────────────────
     if not session_id:
-        logger.warning("stream_audio_chunk called with empty session_id — dropping frame")
+        logger.warning(
+            "stream_audio_chunk called with empty session_id — dropping frame"
+        )
         return {
             "status": "invalid_input",
             "session_id": session_id,
@@ -523,7 +531,10 @@ async def stream_audio_chunk(
         }
 
     if not audio_chunk:
-        logger.debug("stream_audio_chunk got empty audio_chunk for session %s — dropping", session_id)
+        logger.debug(
+            "stream_audio_chunk got empty audio_chunk for session %s — dropping",
+            session_id,
+        )
         return {
             "status": "invalid_input",
             "session_id": session_id,
@@ -554,7 +565,10 @@ async def stream_audio_chunk(
         # deepgram_service.py. Rate-limit the log so we don't flood on
         # every frame at 50fps.
         now = time.monotonic()
-        if now - session.last_disconnected_log_monotonic >= DISCONNECTED_LOG_INTERVAL_SECONDS:
+        if (
+            now - session.last_disconnected_log_monotonic
+            >= DISCONNECTED_LOG_INTERVAL_SECONDS
+        ):
             logger.info(
                 "Deepgram connection inactive for session %s — "
                 "reconnect may be in progress (suppressing further logs for %.0fs)",
@@ -631,6 +645,7 @@ async def stream_audio_chunk(
 # Fallback ADK path — base64 input for testing / non-hot-path orchestration
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def deepgram_transcribe(
     session_id: str,
     audio_b64: str,
@@ -651,7 +666,9 @@ async def deepgram_transcribe(
         {"status": "invalid_input", ..., "message": "audio_b64 is not valid base64"}
     """
     if not session_id:
-        logger.warning("deepgram_transcribe called with empty session_id — dropping frame")
+        logger.warning(
+            "deepgram_transcribe called with empty session_id — dropping frame"
+        )
         return {
             "status": "invalid_input",
             "session_id": session_id,
@@ -659,7 +676,9 @@ async def deepgram_transcribe(
         }
 
     if not audio_b64:
-        logger.debug("deepgram_transcribe called with empty audio_b64 for session %s", session_id)
+        logger.debug(
+            "deepgram_transcribe called with empty audio_b64 for session %s", session_id
+        )
         return {
             "status": "invalid_input",
             "session_id": session_id,

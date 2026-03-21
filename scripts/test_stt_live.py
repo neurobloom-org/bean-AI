@@ -26,13 +26,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 
-
 received_transcripts: list[TranscriptResult] = []
 
 
 async def on_transcript(result: TranscriptResult) -> None:
     received_transcripts.append(result)
-    print(f"  📝 Transcript [{result.type}]: '{result.text}' (confidence={result.confidence:.2f})")
+    print(
+        f"  📝 Transcript [{result.type}]: '{result.text}' (confidence={result.confidence:.2f})"
+    )
 
 
 async def on_utterance_end() -> None:
@@ -41,13 +42,14 @@ async def on_utterance_end() -> None:
 
 def generate_sine_pcm(frequency: int = 440, duration_ms: int = 1000) -> bytes:
     """Generate a simple sine wave as PCM16 mono 16kHz bytes.
-    
+
     A real speech file would produce actual transcripts. This just proves
     the connection is alive and forwarding bytes without errors.
     """
     sample_rate = 16000
     num_samples = int(sample_rate * duration_ms / 1000)
     import math
+
     samples = [
         int(32767 * math.sin(2 * math.pi * frequency * i / sample_rate))
         for i in range(num_samples)
@@ -58,7 +60,9 @@ def generate_sine_pcm(frequency: int = 440, duration_ms: int = 1000) -> bytes:
 async def main() -> None:
     api_key = os.environ.get("DEEPGRAM_API_KEY", "")
     if not api_key or api_key == "test-deepgram-key":
-        print("❌ DEEPGRAM_API_KEY not set or is the test placeholder. Set a real key in .env")
+        print(
+            "❌ DEEPGRAM_API_KEY not set or is the test placeholder. Set a real key in .env"
+        )
         sys.exit(1)
 
     print("🔌 Connecting to Deepgram...")
@@ -76,7 +80,7 @@ async def main() -> None:
     # Send in 20ms chunks (320 bytes each) to simulate ESP32 streaming
     chunk_size = 640  # 16000hz * 2 bytes * 0.02s
     for i in range(0, len(audio), chunk_size):
-        await conn.send_audio(audio[i:i + chunk_size])
+        await conn.send_audio(audio[i : i + chunk_size])
         await asyncio.sleep(0.02)
 
     print("💓 Sending keepalive...")
@@ -91,7 +95,7 @@ async def main() -> None:
     await conn.close()
     print(f"✅ Closed. is_connected={conn.is_connected}")
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(f"Transcripts received: {len(received_transcripts)}")
     if received_transcripts:
         print("✅ Callback pipeline is working end-to-end")
