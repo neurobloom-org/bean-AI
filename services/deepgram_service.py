@@ -18,7 +18,7 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 import websockets
-from websockets.client import WebSocketClientProtocol
+from websockets.client import ClientProtocol
 from websockets.exceptions import ConnectionClosed
 
 from shared.config import get_settings
@@ -49,17 +49,13 @@ class DeepgramConnection:
         on_utterance_end: Callable[[], Coroutine[Any, Any, None]] | None = None,
     ) -> None:
         self._settings = get_settings()
-        self._ws: WebSocketClientProtocol | None = None
+        self._ws: ClientProtocol | None = None
         self._on_transcript = on_transcript
         self._on_utterance_end = on_utterance_end
         self._receive_task: asyncio.Task[None] | None = None
         self._connected = False
         self._closing = False
         self._reconnect_attempts = 0
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Properties
-    # ─────────────────────────────────────────────────────────────────────────
 
     @property
     def is_connected(self) -> bool:
@@ -70,10 +66,6 @@ class DeepgramConnection:
             and self._ws is not None
             and not self._ws.closed
         )
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Connection management
-    # ─────────────────────────────────────────────────────────────────────────
 
     def _build_url(self) -> str:
         """Build Deepgram streaming WebSocket URL."""
@@ -113,7 +105,7 @@ class DeepgramConnection:
                 ping_interval=self._settings.ws_ping_interval_seconds,
                 ping_timeout=10,
                 close_timeout=5,
-                max_size=2**20,  # 1MB max message size
+                max_size=2**20,
             )
             self._connected = True
             self._closing = False
@@ -140,7 +132,6 @@ class DeepgramConnection:
         self._closing = True
         self._connected = False
 
-        # Cancel the receive task
         if self._receive_task and not self._receive_task.done():
             self._receive_task.cancel()
             try:
@@ -148,10 +139,8 @@ class DeepgramConnection:
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
 
-        # Close the WebSocket
         if self._ws and not self._ws.closed:
             try:
-                # Send Deepgram close signal (empty JSON object)
                 await self._ws.send(json.dumps({"type": "CloseStream"}))
                 await asyncio.wait_for(self._ws.close(), timeout=3.0)
             except Exception as exc:
@@ -159,10 +148,6 @@ class DeepgramConnection:
 
         self._ws = None
         logger.info("Deepgram WebSocket closed")
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Audio sending
-    # ─────────────────────────────────────────────────────────────────────────
 
     async def send_audio(self, audio_bytes: bytes) -> None:
         """Forward raw PCM16 audio bytes to Deepgram.
@@ -186,10 +171,6 @@ class DeepgramConnection:
             logger.error("Audio send error: %s", exc)
             self._connected = False
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Receive loop
-    # ─────────────────────────────────────────────────────────────────────────
-
     async def _receive_loop(self) -> None:
         """Continuously receive transcript results from Deepgram."""
         if self._ws is None:
@@ -208,7 +189,6 @@ class DeepgramConnection:
                         await self._handle_results(data)
 
                     elif msg_type == "UtteranceEnd":
-                        # User has stopped speaking — trigger response generation
                         if self._on_utterance_end:
                             await self._on_utterance_end()
 
@@ -265,10 +245,6 @@ class DeepgramConnection:
 
         except Exception as exc:
             logger.error("Error parsing Deepgram results: %s", exc)
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Reconnection
-    # ─────────────────────────────────────────────────────────────────────────
 
     async def _try_reconnect(self) -> None:
         """Attempt to reconnect to Deepgram after a connection drop.
