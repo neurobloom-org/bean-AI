@@ -331,10 +331,14 @@ class MemoryWriterAgent(BaseAgent):
             client = await get_service_client()
 
             await _retry_sync_in_thread(
-                lambda: client.table("user_profiles").upsert(
-                    {"user_id": user_id, **atomic_facts},
-                    on_conflict="user_id",
-                ).execute(),
+                lambda: (
+                    client.table("user_profiles")
+                    .upsert(
+                        {"user_id": user_id, **atomic_facts},
+                        on_conflict="user_id",
+                    )
+                    .execute()
+                ),
                 max_attempts=_DB_MAX_ATTEMPTS,
                 base_delay_s=_DB_RETRY_BASE_DELAY_S,
                 operation_name="semantic profile upsert",

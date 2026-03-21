@@ -278,14 +278,19 @@ class MemoryAgent(BaseAgent):
 
         if privacy_client is None:
             from services.privacy_service import privacy_service as _ps
+
             privacy_client = _ps
 
         self._privacy_client: PrivacyClientProtocol = privacy_client
         self._user_profile_fetcher: UserProfileFetcherProtocol = (
-            user_profile_fetcher if user_profile_fetcher is not None else get_user_profile
+            user_profile_fetcher
+            if user_profile_fetcher is not None
+            else get_user_profile
         )
         self._episodic_searcher: EpisodicSearchProtocol = (
-            episodic_searcher if episodic_searcher is not None else search_similar_memories
+            episodic_searcher
+            if episodic_searcher is not None
+            else search_similar_memories
         )
 
         self._circuit_breakers: dict[str, CircuitBreaker] = {
@@ -479,11 +484,16 @@ class MemoryAgent(BaseAgent):
             for row in rows:
                 try:
                     raw = RawWorkingMemoryRow.model_validate(row)
-                    parsed.append(WorkingMemoryEntry(speaker=raw.speaker, text=raw.text))
+                    parsed.append(
+                        WorkingMemoryEntry(speaker=raw.speaker, text=raw.text)
+                    )
                 except ValidationError:
                     logger.warning(
                         "MemoryAgent: invalid working memory row skipped",
-                        extra={"memory_source": "working_memory", "session_id": session_id},
+                        extra={
+                            "memory_source": "working_memory",
+                            "session_id": session_id,
+                        },
                     )
             return parsed
 
@@ -704,7 +714,9 @@ class MemoryAgent(BaseAgent):
                     error_type=type(exc).__name__,
                 )
 
-        raise RuntimeError(f"MemoryAgent: retry loop for '{label}' exited without returning")
+        raise RuntimeError(
+            f"MemoryAgent: retry loop for '{label}' exited without returning"
+        )
 
     # ── Assembly ──────────────────────────────────────────────────────────────
 
@@ -741,11 +753,13 @@ class MemoryAgent(BaseAgent):
         return "No memory context yet."
 
     def _compute_memory_status(self, outcome: MemoryFetchOutcome) -> str:
-        ok_count = sum([
-            outcome.working_meta.ok,
-            outcome.profile_meta.ok,
-            outcome.episodic_meta.ok,
-        ])
+        ok_count = sum(
+            [
+                outcome.working_meta.ok,
+                outcome.profile_meta.ok,
+                outcome.episodic_meta.ok,
+            ]
+        )
         if ok_count == 3:
             return "ok"
         if ok_count == 0:
@@ -793,7 +807,9 @@ class MemoryAgent(BaseAgent):
                 raw,
                 extra={"memory_source": label},
             )
-            return empty, SourceResult(ok=False, item_count=0, error_type=type(raw).__name__)
+            return empty, SourceResult(
+                ok=False, item_count=0, error_type=type(raw).__name__
+            )
         return raw
 
     @staticmethod

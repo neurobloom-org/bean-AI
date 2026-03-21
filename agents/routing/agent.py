@@ -248,7 +248,7 @@ class _RoutingDiagnostics:
     """Observability fields written to session state after every run."""
 
     used_fallback: bool
-    failure_reason: str   # "" on success; short code string on failure
+    failure_reason: str  # "" on success; short code string on failure
     attempt_count: int
     alert_suspected: bool  # True if the LLM proposed "alert" before any downgrade
 
@@ -394,7 +394,10 @@ def _apply_alert_confidence_floor(
     the user empathetic support, while the AlertAgent's keyword matching
     (F1/F5) will catch real crises regardless of this decision.
     """
-    if decision.route == RouteType.ALERT and decision.confidence < ALERT_CONFIDENCE_FLOOR:
+    if (
+        decision.route == RouteType.ALERT
+        and decision.confidence < ALERT_CONFIDENCE_FLOOR
+    ):
         return (
             _RoutingDecision(route=RouteType.THERAPY, confidence=decision.confidence),
             True,
@@ -407,9 +410,8 @@ def _compute_retry_delay(attempt_index: int) -> float:
 
     With MAX_LLM_RETRIES=1 and base=0.05s, the worst-case penalty is ~0.1s.
     """
-    return (
-        RETRY_BASE_DELAY_SECONDS * (2 ** attempt_index)
-        + random.uniform(0.0, RETRY_JITTER_SECONDS)
+    return RETRY_BASE_DELAY_SECONDS * (2**attempt_index) + random.uniform(
+        0.0, RETRY_JITTER_SECONDS
     )
 
 
@@ -578,8 +580,7 @@ class RoutingAgent(BaseAgent):
 
                 if downgraded:
                     log.info(
-                        "Alert downgraded to therapy: "
-                        "confidence %.2f < floor %.2f",
+                        "Alert downgraded to therapy: confidence %.2f < floor %.2f",
                         original_confidence,
                         ALERT_CONFIDENCE_FLOOR,
                     )

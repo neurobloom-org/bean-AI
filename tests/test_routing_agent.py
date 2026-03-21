@@ -273,6 +273,7 @@ class TestTimeout:
         assert result["route"] == RouteType.CASUAL.value
         assert result["routing_used_fallback"] is True
         assert result["routing_failure_reason"] == "timeout"
+
     @pytest.mark.asyncio
     async def test_timeout_triggers_fallback_retry(self) -> None:
         """LLM call that times out → fallback to casual."""
@@ -390,6 +391,7 @@ class TestInputSanitization:
 
     def test_normalize_route_distribution_clamps_counts(self) -> None:
         from agents.routing.agent import MAX_ROUTE_DISTRIBUTION_COUNT
+
         raw = {"casual": MAX_ROUTE_DISTRIBUTION_COUNT + 9999, "therapy": -5}
         result = _normalize_route_distribution(raw)
         assert result[RouteType.CASUAL] == MAX_ROUTE_DISTRIBUTION_COUNT
