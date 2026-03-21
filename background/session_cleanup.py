@@ -106,7 +106,9 @@ async def cleanup_ended_sessions() -> int:
         total_changed += deleted_count
 
         if deleted_count:
-            logger.info("[Cleanup] Deleted %d old ended/expired sessions", deleted_count)
+            logger.info(
+                "[Cleanup] Deleted %d old ended/expired sessions", deleted_count
+            )
 
     except Exception as exc:
         logger.error("[Cleanup] Failed deleting old sessions: %s", exc)
