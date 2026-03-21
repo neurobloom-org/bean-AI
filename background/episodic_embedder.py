@@ -9,6 +9,8 @@ Used as a fallback when memory_writer_agent fails.
 
 import asyncio
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 from services.embedding_service import get_embedding
 from services.supabase_client import get_service_client
@@ -33,10 +35,16 @@ async def embed_missing_episodic_memories() -> int:
         updated_count = 0
 
         for row in rows:
+            # 🔧 Fix mypy JSON typing issue
+            if not isinstance(row, Mapping):
+                logger.warning("[EpisodicEmbedder] Skipping non-mapping row")
+                continue
+
             memory_id = row.get("id")
             memory_text = row.get("memory_text")
 
-            if not memory_id or not memory_text:
+            # 🔧 Ensure values are correct types
+            if not memory_id or not isinstance(memory_text, str) or not memory_text:
                 logger.warning(
                     "[EpisodicEmbedder] Skipping row with missing id or memory_text"
                 )
@@ -53,6 +61,7 @@ async def embed_missing_episodic_memories() -> int:
                 )
 
                 updated_count += 1
+
                 logger.info(
                     "[EpisodicEmbedder] Updated embedding for memory %s",
                     str(memory_id)[:8],
