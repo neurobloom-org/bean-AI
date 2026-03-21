@@ -25,8 +25,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
-from services.deepgram_service import DeepgramConnection
-from shared.schemas import TranscriptResult
 
 
 received_transcripts: list[TranscriptResult] = []
