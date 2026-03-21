@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from google.adk.agents import BaseAgent
@@ -107,7 +108,7 @@ class RoutingAgent(BaseAgent):
 
     async def _run_async_impl(
         self, ctx: InvocationContext
-    ) -> adk_types.AsyncGenerator:
+    ) -> AsyncGenerator[adk_types.Content, None]:
         state = ctx.session.state
 
         # Read required session state values safely.
