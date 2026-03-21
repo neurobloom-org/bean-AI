@@ -27,7 +27,7 @@ if missing:
     print(f"❌ Missing env vars: {', '.join(missing)}")
     sys.exit(1)
 
-from agents.tts.agent import synthesize_speech, stream_tts_chunks
+from agents.tts.agent import synthesize_speech, stream_tts_chunks  # noqa: E402
 
 
 async def test_full_audio() -> None:
