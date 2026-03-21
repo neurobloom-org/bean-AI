@@ -106,6 +106,7 @@ _log_worker_stop_event: asyncio.Event | None = None
 _log_worker_last_heartbeat_ts: float = 0.0
 _log_worker_last_error: str | None = None
 
+
 # ── Per-session state ────────────────────────────────────────────────────────
 @dataclass
 class _SessionState:
@@ -352,7 +353,9 @@ def _apply_ema(
     if state.ema_probs is None:
         state.ema_probs = _neutral_prior_probs()
 
-    state.ema_probs = _normalize_probs(alpha * raw_probs + (1.0 - alpha) * state.ema_probs)
+    state.ema_probs = _normalize_probs(
+        alpha * raw_probs + (1.0 - alpha) * state.ema_probs
+    )
     return state.ema_probs
 
 
@@ -409,7 +412,11 @@ def _log_worker_done(task: asyncio.Task[Any]) -> None:
 
 
 async def _ensure_log_worker_started() -> None:
-    global _log_worker_task, _log_worker_started, _log_worker_stop_event, _log_worker_last_error
+    global \
+        _log_worker_task, \
+        _log_worker_started, \
+        _log_worker_stop_event, \
+        _log_worker_last_error
 
     health = get_emotion_log_worker_health()
     if health["running"]:
@@ -422,7 +429,9 @@ async def _ensure_log_worker_started() -> None:
             return
 
         _log_worker_stop_event = asyncio.Event()
-        _log_worker_task = asyncio.create_task(_log_worker_loop(), name="emotion-log-worker")
+        _log_worker_task = asyncio.create_task(
+            _log_worker_loop(), name="emotion-log-worker"
+        )
         _log_worker_task.add_done_callback(_log_worker_done)
         _log_worker_started = True
         _log_worker_last_error = None
@@ -560,7 +569,7 @@ async def detect_emotion(
     audio_b64: str,
     sample_rate: int = DEFAULT_SAMPLE_RATE,
     session_id: str = "",
-    user_id: str = "",              
+    user_id: str = "",
 ) -> dict[str, Any]:
     """Detect emotion from a PCM audio window.
 
@@ -648,14 +657,14 @@ async def detect_emotion(
         if session_id and _should_log_this_window(state):
             await _enqueue_emotion_log(
                 {
-                    "user_id": user_id,             
+                    "user_id": user_id,
                     "session_id": session_id,
                     "emotion": result.emotion,
                     "confidence": result.confidence,
-                    "detected_at": timestamp,      
+                    "detected_at": timestamp,
                     # window_ms dropped — not a column in the table
                 }
-)
+            )
 
         return {
             "label": result.emotion,
