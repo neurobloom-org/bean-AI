@@ -65,6 +65,7 @@ class Settings(BaseSettings):  # type: ignore[misc]
     episodic_memory_retention_days: int = (
         365  # FIX: was episodic_memory_expiry_days in some files
     )
+    session_retention_days: int = 30
     session_metadata_retention_days: int = 730
 
     # ── Safety ───────────────────────────────────────────────────────────────
