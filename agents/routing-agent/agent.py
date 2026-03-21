@@ -84,7 +84,11 @@ def _normalize_route(value: Any) -> str:
     """Validate and normalize the returned route."""
     route = _safe_str(value, DEFAULT_ROUTE).strip().lower()
     if route not in VALID_ROUTES:
-        logger.warning("Routing returned invalid route '%s'; defaulting to '%s'", route, DEFAULT_ROUTE)
+        logger.warning(
+            "Routing returned invalid route '%s'; defaulting to '%s'",
+            route,
+            DEFAULT_ROUTE,
+        )
         return DEFAULT_ROUTE
     return route
 
@@ -115,14 +119,18 @@ class RoutingAgent(BaseAgent):
         user_text = _safe_str(state.get("current_transcript", ""))
         emotion = _safe_str(state.get("current_emotion", "neutral"), "neutral")
         turn_number = _safe_int(state.get("turn_count", 0), 0)
-        route_distribution = _safe_route_distribution(state.get("route_distribution", {}))
+        route_distribution = _safe_route_distribution(
+            state.get("route_distribution", {})
+        )
 
         # Requirement from checklist:
         # Empty transcript should default to casual without calling the LLM.
         if not user_text.strip():
             state["route"] = DEFAULT_ROUTE
             state["routing_confidence"] = EMPTY_TRANSCRIPT_CONFIDENCE
-            logger.debug("Empty transcript detected; defaulted route to '%s'", DEFAULT_ROUTE)
+            logger.debug(
+                "Empty transcript detected; defaulted route to '%s'", DEFAULT_ROUTE
+            )
             yield adk_types.Content(parts=[])
             return
 
@@ -147,7 +155,9 @@ class RoutingAgent(BaseAgent):
                 raise ValueError("generate_json returned a non-dict response")
 
             route = _normalize_route(result.get("route"))
-            confidence = _normalize_confidence(result.get("confidence"), DEFAULT_CONFIDENCE)
+            confidence = _normalize_confidence(
+                result.get("confidence"), DEFAULT_CONFIDENCE
+            )
 
             state["route"] = route
             state["routing_confidence"] = confidence
