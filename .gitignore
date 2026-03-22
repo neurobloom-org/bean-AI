@@ -1,0 +1,52 @@
+# ── Secrets (CRITICAL) ────────────────────────────────────────────────────────
+.env
+.env.local
+.env.keys
+.env.*.local
+.env.production
+.env.staging
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+env/
+.venv/
+venv/
+*.pyo
+
+# ── Testing & Coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ── Type Checking & Linting ───────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+
+# ── IDE & OS ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ── Local Dependencies & Caches ───────────────────────────────────────────────
+models/
+*.pt
+*.bin
+*.safetensors
+.supabase/
+*.log
+
+# ── Supabase ──────────────────────────────────────────────────────────────────
+.branches
+.temp
+
+# voice files ──────────────────────────────────────────────────────────────────
+scripts/*.mp3
+scripts/*.wav
