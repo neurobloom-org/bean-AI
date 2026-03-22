@@ -92,15 +92,15 @@ FALLBACK_LABEL = "neutral"
 # ── Model state ──────────────────────────────────────────────────────────────
 _model = None
 _feature_extractor = None
-_model_lock: asyncio.Lock | None = None
+_model_lock: asyncio.Lock = asyncio.Lock()
 
 # ── Background logging worker state ──────────────────────────────────────────
 _log_buffer: deque[dict[str, Any]] = deque()
-_log_buffer_lock: asyncio.Lock | None = None
+_log_buffer_lock: asyncio.Lock = asyncio.Lock()
 
 _log_worker_task: asyncio.Task[Any] | None = None
 _log_worker_started = False
-_log_worker_start_lock: asyncio.Lock | None = None
+_log_worker_start_lock: asyncio.Lock = asyncio.Lock()
 _log_worker_stop_event: asyncio.Event | None = None
 
 _log_worker_last_heartbeat_ts: float = 0.0
@@ -119,7 +119,7 @@ class _SessionState:
 
 
 _session_states: dict[str, _SessionState] = {}
-_session_lock: asyncio.Lock | None = None
+_session_lock: asyncio.Lock = asyncio.Lock()
 _cleanup_tick = 0
 
 
@@ -140,34 +140,6 @@ def _neutral_prior_probs() -> np.ndarray:
     return probs
 
 
-async def _get_model_lock() -> asyncio.Lock:
-    global _model_lock
-    if _model_lock is None:
-        _model_lock = asyncio.Lock()
-    return _model_lock
-
-
-async def _get_log_buffer_lock() -> asyncio.Lock:
-    global _log_buffer_lock
-    if _log_buffer_lock is None:
-        _log_buffer_lock = asyncio.Lock()
-    return _log_buffer_lock
-
-
-async def _get_session_lock() -> asyncio.Lock:
-    global _session_lock
-    if _session_lock is None:
-        _session_lock = asyncio.Lock()
-    return _session_lock
-
-
-async def _get_log_worker_start_lock() -> asyncio.Lock:
-    global _log_worker_start_lock
-    if _log_worker_start_lock is None:
-        _log_worker_start_lock = asyncio.Lock()
-    return _log_worker_start_lock
-
-
 async def _load_model() -> None:
     """Lazy-load the wav2vec2 emotion recognition model once."""
     global _model, _feature_extractor
@@ -175,8 +147,7 @@ async def _load_model() -> None:
     if _model is not None and _feature_extractor is not None:
         return
 
-    model_lock = await _get_model_lock()
-    async with model_lock:
+    async with _model_lock:
         if _model is not None and _feature_extractor is not None:
             return
 
@@ -293,8 +264,7 @@ async def cleanup_emotion_session(session_id: str) -> None:
     if not session_id:
         return
 
-    session_lock = await _get_session_lock()
-    async with session_lock:
+    async with _session_lock:
         _session_states.pop(session_id, None)
 
 
@@ -307,8 +277,7 @@ async def _get_or_create_session_state(session_id: str) -> _SessionState | None:
     loop = asyncio.get_running_loop()
     now_ts = loop.time()
 
-    session_lock = await _get_session_lock()
-    async with session_lock:
+    async with _session_lock:
         state = _session_states.get(session_id)
         if state is None:
             state = _SessionState(
@@ -422,8 +391,7 @@ async def _ensure_log_worker_started() -> None:
     if health["running"]:
         return
 
-    start_lock = await _get_log_worker_start_lock()
-    async with start_lock:
+    async with _log_worker_start_lock:
         health = get_emotion_log_worker_health()
         if health["running"]:
             return
@@ -441,8 +409,7 @@ async def _ensure_log_worker_started() -> None:
 async def _enqueue_emotion_log(row: dict[str, Any]) -> None:
     await _ensure_log_worker_started()
 
-    buffer_lock = await _get_log_buffer_lock()
-    async with buffer_lock:
+    async with _log_buffer_lock:
         if len(_log_buffer) >= MAX_LOG_BUFFER_SIZE:
             dropped = _log_buffer.popleft()
             logger.warning(
@@ -455,8 +422,7 @@ async def _enqueue_emotion_log(row: dict[str, Any]) -> None:
 async def _drain_log_buffer(max_items: int) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
 
-    buffer_lock = await _get_log_buffer_lock()
-    async with buffer_lock:
+    async with _log_buffer_lock:
         while _log_buffer and len(rows) < max_items:
             rows.append(_log_buffer.popleft())
 
@@ -477,8 +443,7 @@ async def _flush_log_rows(rows: list[dict[str, Any]]) -> None:
         requeued = 0
         dropped = 0
 
-        buffer_lock = await _get_log_buffer_lock()
-        async with buffer_lock:
+        async with _log_buffer_lock:
             for row in reversed(rows):
                 if len(_log_buffer) < MAX_LOG_BUFFER_SIZE:
                     _log_buffer.appendleft(row)
