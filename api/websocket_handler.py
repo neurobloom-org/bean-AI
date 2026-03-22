@@ -95,9 +95,7 @@ class BEANSession:
         "deepgram",
     )
 
-    def __init__(
-        self, user_id: str, session_id: str, websocket: WebSocket
-    ) -> None:
+    def __init__(self, user_id: str, session_id: str, websocket: WebSocket) -> None:
         self.user_id = user_id
         self.session_id = session_id
         self.websocket = websocket
@@ -124,13 +122,17 @@ class BEANSession:
         try:
             await self.websocket.send_json(data)
         except Exception as exc:
-            logger.debug("WS send_json failed [session=%s]: %s", self.session_id[:8], exc)
+            logger.debug(
+                "WS send_json failed [session=%s]: %s", self.session_id[:8], exc
+            )
 
     async def send_bytes(self, data: bytes) -> None:
         try:
             await self.websocket.send_bytes(data)
         except Exception as exc:
-            logger.debug("WS send_bytes failed [session=%s]: %s", self.session_id[:8], exc)
+            logger.debug(
+                "WS send_bytes failed [session=%s]: %s", self.session_id[:8], exc
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -147,11 +149,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     Control: JSON messages — ping/pong, emotion results, robot status, etc.
     """
     raw_protocol = websocket.headers.get("Sec-WebSocket-Protocol", "")
-    chosen = (
-        raw_protocol.split(",")[0].strip()
-        if "bearer." in raw_protocol
-        else None
-    )
+    chosen = raw_protocol.split(",")[0].strip() if "bearer." in raw_protocol else None
     await websocket.accept(subprotocol=chosen)
 
     # ── Authenticate ──────────────────────────────────────────────────────────
@@ -181,7 +179,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     logger.info(
         "WebSocket connected: user=%s session=%s is_minor=%s",
-        user_id[:8], session_id[:8], session.is_minor,
+        user_id[:8],
+        session_id[:8],
+        session.is_minor,
     )
     await session.send_json({"type": "connected", "session_id": session_id})
 
@@ -225,7 +225,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if len(audio_bytes) > settings.ws_max_audio_frame_bytes:
                     logger.warning(
                         "Audio frame too large (%d bytes), dropping [session=%s]",
-                        len(audio_bytes), session_id[:8],
+                        len(audio_bytes),
+                        session_id[:8],
                     )
                     continue
 
@@ -249,18 +250,19 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 except json.JSONDecodeError:
                     logger.warning(
                         "Invalid JSON from ESP32 [session=%s]: %.100s",
-                        session_id[:8], message["text"],
+                        session_id[:8],
+                        message["text"],
                     )
 
     except WebSocketDisconnect:
         logger.info(
             "WebSocket disconnected: user=%s session=%s turns=%d",
-            user_id[:8], session_id[:8], session.turn_count,
+            user_id[:8],
+            session_id[:8],
+            session.turn_count,
         )
     except Exception as exc:
-        logger.error(
-            "WebSocket error [session=%s]: %s", session_id[:8], exc
-        )
+        logger.error("WebSocket error [session=%s]: %s", session_id[:8], exc)
     finally:
         reminder_task.cancel()
         keepalive_task.cancel()
@@ -348,9 +350,7 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         "current_transcript": user_text,
         "current_emotion": session.current_emotion,
         "emotion_confidence": "0.7",
-        "recent_emotions": json.dumps(
-            [[e, 0.7] for e in session.emotion_trend[-5:]]
-        ),
+        "recent_emotions": json.dumps([[e, 0.7] for e in session.emotion_trend[-5:]]),
         "turn_count": session.turn_count,
         "route_distribution": session.route_distribution,
         "recent_transcript": recent,
@@ -377,13 +377,12 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
     if not response_text:
         logger.warning(
             "Orchestrator returned no text [session=%s route=%s]",
-            session.session_id[:8], route,
+            session.session_id[:8],
+            route,
         )
         return
 
-    session.route_distribution[route] = (
-        session.route_distribution.get(route, 0) + 1
-    )
+    session.route_distribution[route] = session.route_distribution.get(route, 0) + 1
 
     await session.send_json(
         {
@@ -398,17 +397,18 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         await session.send_json(music_command)
         logger.info(
             "Music command sent to ESP32: type=%s session=%s",
-            music_command.get("type"), session.session_id[:8],
+            music_command.get("type"),
+            session.session_id[:8],
         )
 
     post_alert = session_state.get("post_alert_message")
     if post_alert:
-        await session.send_json(
-            {"type": "alert_notification", "message": post_alert}
-        )
+        await session.send_json({"type": "alert_notification", "message": post_alert})
 
-    tts_text = response_text if route != "music" else (
-        response_text if response_text.strip() else None
+    tts_text = (
+        response_text
+        if route != "music"
+        else (response_text if response_text.strip() else None)
     )
     if tts_text:
         await stream_tts_to_websocket(
@@ -428,9 +428,7 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
     msg_type = data.get("type", "")
 
     if msg_type == "ping":
-        await session.send_json(
-            {"type": "pong", "timestamp": utcnow().isoformat()}
-        )
+        await session.send_json({"type": "pong", "timestamp": utcnow().isoformat()})
 
     elif msg_type == "emotion_result":
         emotion = data.get("emotion", "neutral")
@@ -443,7 +441,9 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
         rssi = data.get("wifi_rssi")
         logger.debug(
             "Robot status: battery=%s wifi=%s session=%s",
-            battery, rssi, session.session_id[:8],
+            battery,
+            rssi,
+            session.session_id[:8],
         )
         if session.session_id in _active_sessions:
             _active_sessions[session.session_id].update(
@@ -456,7 +456,8 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
     else:
         logger.debug(
             "Unknown control message type '%s' [session=%s]",
-            msg_type, session.session_id[:8],
+            msg_type,
+            session.session_id[:8],
         )
 
 
@@ -470,15 +471,14 @@ async def _keepalive_ping(session: BEANSession, interval: int = 20) -> None:
     while True:
         try:
             await asyncio.sleep(interval)
-            await session.send_json(
-                {"type": "ping", "timestamp": utcnow().isoformat()}
-            )
+            await session.send_json({"type": "ping", "timestamp": utcnow().isoformat()})
         except asyncio.CancelledError:
             break
         except Exception as exc:
             logger.debug(
                 "Keepalive ping failed [session=%s]: %s",
-                session.session_id[:8], exc,
+                session.session_id[:8],
+                exc,
             )
             break
 
@@ -514,7 +514,8 @@ async def _poll_reminders(session: BEANSession) -> None:
             )
             logger.info(
                 "Reminder delivered to ESP32: task=%s user=%s",
-                reminder.get("task_id"), session.user_id[:8],
+                reminder.get("task_id"),
+                session.user_id[:8],
             )
 
         except asyncio.CancelledError:
@@ -522,7 +523,8 @@ async def _poll_reminders(session: BEANSession) -> None:
         except Exception as exc:
             logger.debug(
                 "Reminder poll error [session=%s]: %s",
-                session.session_id[:8], exc,
+                session.session_id[:8],
+                exc,
             )
 
 
@@ -540,13 +542,13 @@ async def _load_user_flags(session: BEANSession) -> None:
         if profile:
             diagnosis_tags = profile.get("diagnosis_tags", []) or []
             session.is_minor = (
-                bool(profile.get("is_minor", False))
-                or "minor" in diagnosis_tags
+                bool(profile.get("is_minor", False)) or "minor" in diagnosis_tags
             )
     except Exception as exc:
         logger.debug(
             "Failed to load user flags [session=%s]: %s",
-            session.session_id[:8], exc,
+            session.session_id[:8],
+            exc,
         )
 
 
@@ -588,7 +590,8 @@ async def _store_emotion_event(
     except Exception as exc:
         logger.debug(
             "Emotion event store failed (non-critical) [session=%s]: %s",
-            session.session_id[:8], exc,
+            session.session_id[:8],
+            exc,
         )
 
 
@@ -619,10 +622,13 @@ async def _cleanup_session(session: BEANSession) -> None:
     except Exception as exc:
         logger.error(
             "Session cleanup DB update failed [session=%s]: %s",
-            session.session_id[:8], exc,
+            session.session_id[:8],
+            exc,
         )
 
     logger.info(
         "Session ended: user=%s session=%s turns=%d",
-        session.user_id[:8], session.session_id[:8], session.turn_count,
+        session.user_id[:8],
+        session.session_id[:8],
+        session.turn_count,
     )
