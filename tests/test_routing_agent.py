@@ -52,6 +52,7 @@ async def _run_agent(state: dict[str, Any]) -> dict[str, Any]:
             state.update(event.actions.state_delta)
     return state
 
+
 def _make_llm_response(route: str, confidence: float) -> dict[str, Any]:
     return {"route": route, "confidence": confidence}
 
