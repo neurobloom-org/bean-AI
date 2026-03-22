@@ -3,26 +3,41 @@
 Custom BaseAgent for real-time safety monitoring.
 
 What this agent does:
-- Runs parallel safety monitoring using session.state data
-- Evaluates a 5-factor safety scoring system
-- Uses a 3-of-5 threshold for adults
-- Uses a 2-of-5 threshold for minors because F4 (vulnerability) is auto-counted
-- Dispatches guardian SMS when alert threshold is met
-- Persists alert records to the database
-- Prevents duplicate dispatches using session.state["alert_dispatched"]
+- Evaluates a 5-factor safety scoring system on every conversation turn
+- Compares the active factor count against configurable per-age-group thresholds
+- Dispatches guardian SMS when the alert threshold is met
+- Persists alert records to the database (both on success and failure)
+- Prevents duplicate dispatches within a session using session.state["alert_dispatched"]
 
 Factors:
-- F1: crisis_keyword
-- F2: negative_emotion
-- F3: escalation_pattern
-- F4: vulnerability
-- F5: explicit_statement
+    F1: crisis_keyword      — explicit self-harm / suicidal language
+    F2: negative_emotion    — sustained negative emotional state (confidence > 0.5)
+    F3: escalation_pattern  — 3 consecutive negative emotion labels
+    F4: vulnerability       — user is a minor (auto-counted, always active for minors)
+    F5: explicit_statement  — direct statement of intent or hopelessness
+
+Thresholds (from settings, not hardcoded):
+    alert_threshold        — adults (default 3)
+    minor_alert_threshold  — minors (default 2); lower because F4 is always pre-counted
+
+AlertLevel mapping (example, adult threshold=3):
+    0 factors  → NONE
+    1 factor   → LOW
+    2 factors  → MEDIUM
+    3 factors  → HIGH      ← guardian SMS dispatched
+    4+ factors → CRISIS    ← guardian SMS dispatched
+
+For minors (threshold=2) there is no MEDIUM level — 2 factors goes straight to HIGH.
 """
 
+from __future__ import annotations
+
+import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from typing import Any
 
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
@@ -35,16 +50,48 @@ from services.safety_service import (
 )
 from services.supabase_client import get_service_client
 from services.twilio_service import send_guardian_alert
+from shared.config import get_settings
 from shared.enums import AlertFactor, AlertLevel, EmotionLabel
 
 logger = logging.getLogger(__name__)
 
+# ── Tuning constants ──────────────────────────────────────────────────────────
 
-def _compute_alert_level(active_count: int, is_minor: bool) -> AlertLevel:
-    """Compute alert level based on active factor count and user age group."""
-    threshold = 2 if is_minor else 3
+# Timeout for each individual Supabase call inside _dispatch_alert.
+# Guardian SMS is safety-critical but we cannot block indefinitely.
+_DB_TIMEOUT_SECONDS: float = 8.0
 
-    if active_count == 0:
+# Timeout for the Supabase auth.admin.get_user_by_id call (guardian phone lookup).
+_AUTH_LOOKUP_TIMEOUT_SECONDS: float = 5.0
+
+
+# ── Pure helpers ──────────────────────────────────────────────────────────────
+
+
+def _compute_alert_level(
+    active_count: int,
+    *,
+    threshold: int,
+) -> AlertLevel:
+    """Compute AlertLevel from the number of active factors and the threshold.
+
+    Args:
+        active_count: Number of distinct safety factors that fired this turn.
+        threshold:    Minimum count to reach AlertLevel.HIGH.
+                      Comes from settings: alert_threshold (adults) or
+                      minor_alert_threshold (minors).
+
+    Returns:
+        AlertLevel enum value.
+
+    Level mapping:
+        0                    → NONE
+        1                    → LOW
+        2 to threshold-1     → MEDIUM  (only reachable when threshold >= 3)
+        threshold            → HIGH    ← guardian SMS threshold
+        threshold+1 and above → CRISIS
+    """
+    if active_count <= 0:
         return AlertLevel.NONE
     if active_count < threshold:
         return AlertLevel.LOW if active_count == 1 else AlertLevel.MEDIUM
@@ -53,8 +100,45 @@ def _compute_alert_level(active_count: int, is_minor: bool) -> AlertLevel:
     return AlertLevel.CRISIS
 
 
+def _parse_emotion_confidence(raw: Any) -> float:
+    """Safely parse emotion_confidence from session state.
+
+    Returns 0.0 on any parse failure rather than raising.
+    Booleans are rejected — True/False as a confidence value is a data error.
+    """
+    if isinstance(raw, bool):
+        return 0.0
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    # Clamp to [0.0, 1.0] — values outside this range are nonsensical.
+    return max(0.0, min(1.0, value))
+
+
+def _parse_already_dispatched(raw: Any) -> bool:
+    """Safely parse the alert_dispatched flag from session state.
+
+    Handles the three forms it may arrive in:
+      - bool True/False (stored directly as Python bool)
+      - str "true"/"false"/"1"/"0" (stored via state_delta)
+      - anything else → False (safe default)
+    """
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"true", "1", "yes"}
+    return False
+
+
 def _normalize_recent_emotion_labels(recent_emotions: list[object]) -> list[str]:
-    """Normalize recent emotion entries into a list of emotion label strings."""
+    """Normalize recent emotion entries into a flat list of label strings.
+
+    Handles three formats the orchestrator may store in session state:
+      - str:              "sad"
+      - list/tuple:       ["sad", 0.9]  (label + confidence pair)
+      - dict:             {"label": "sad", "confidence": 0.9}
+    """
     normalized: list[str] = []
 
     for item in recent_emotions:
@@ -71,6 +155,9 @@ def _normalize_recent_emotion_labels(recent_emotions: list[object]) -> list[str]
     return normalized
 
 
+# ── Agent ─────────────────────────────────────────────────────────────────────
+
+
 class AlertAgent(BaseAgent):
     """Custom BaseAgent for real-time safety monitoring and guardian alert dispatch."""
 
@@ -81,43 +168,82 @@ class AlertAgent(BaseAgent):
         ctx: InvocationContext,
     ) -> AsyncGenerator[Event, None]:
         """Read session state, evaluate safety factors, and dispatch alerts."""
-        session_id = ctx.session.state.get("session_id", "")
-        user_id = ctx.session.state.get("user_id", "")
-        transcript = ctx.session.state.get("current_transcript", "")
-        current_emotion_str = ctx.session.state.get("current_emotion", "neutral")
-        emotion_confidence = float(ctx.session.state.get("emotion_confidence", 0.0))
-        is_minor = bool(ctx.session.state.get("is_minor", False))
+        state = ctx.session.state
 
-        raw_dispatched = ctx.session.state.get("alert_dispatched", False)
-        already_dispatched = str(raw_dispatched).lower() == "true"
+        session_id: str = str(state.get("session_id") or "")
+        user_id: str = str(state.get("user_id") or "")
+        transcript: str = str(state.get("current_transcript") or "")
+        current_emotion_str: str = str(state.get("current_emotion") or "neutral")
+        emotion_confidence: float = _parse_emotion_confidence(
+            state.get("emotion_confidence", 0.0)
+        )
+        is_minor: bool = bool(state.get("is_minor", False))
+        already_dispatched: bool = _parse_already_dispatched(
+            state.get("alert_dispatched", False)
+        )
 
         logger.debug(
-            "AlertAgent started [session=%s, user=%s, is_minor=%s, dispatched=%s]",
-            session_id,
-            user_id,
+            "AlertAgent started [session=%s user=%s is_minor=%s dispatched=%s]",
+            session_id[:8] if session_id else "?",
+            user_id[:8] if user_id else "?",
             is_minor,
             already_dispatched,
         )
 
-        if not transcript or already_dispatched:
+        # ── Fast exits ────────────────────────────────────────────────────────
+        if not transcript:
+            logger.debug("AlertAgent: skipping — empty transcript")
+            yield Event(
+                author=self.name,
+                actions=EventActions(state_delta={}),
+            )
             return
 
+        if already_dispatched:
+            logger.debug("AlertAgent: skipping — alert already dispatched this session")
+            yield Event(
+                author=self.name,
+                actions=EventActions(state_delta={}),
+            )
+            return
+
+        # ── Resolve thresholds from config ────────────────────────────────────
+        settings = get_settings()
+        threshold = (
+            settings.minor_alert_threshold
+            if is_minor
+            else settings.alert_threshold
+        )
+
+        # ── Factor evaluation ─────────────────────────────────────────────────
         try:
             current_emotion = EmotionLabel(current_emotion_str)
         except ValueError:
+            logger.debug(
+                "AlertAgent: unknown emotion %r — defaulting to NEUTRAL",
+                current_emotion_str,
+            )
             current_emotion = EmotionLabel.NEUTRAL
 
         active_factors: list[str] = []
 
-        has_crisis, _ = check_crisis_keywords(transcript, is_minor)
+        # F1 — crisis keyword
+        has_crisis, matched_crisis_kw = check_crisis_keywords(transcript, is_minor)
         if has_crisis:
             active_factors.append(AlertFactor.F1_CRISIS_KEYWORD.value)
+            logger.debug("AlertAgent: F1 triggered — %s", matched_crisis_kw)
 
+        # F2 — negative emotion with sufficient confidence
         if current_emotion in EmotionLabel.negative() and emotion_confidence > 0.5:
             active_factors.append(AlertFactor.F2_NEGATIVE_EMOTION.value)
+            logger.debug(
+                "AlertAgent: F2 triggered — emotion=%s confidence=%.2f",
+                current_emotion.value,
+                emotion_confidence,
+            )
 
-        recent_emotions_raw = ctx.session.state.get("recent_emotions", "[]")
-
+        # F3 — escalation pattern (3 consecutive negative emotions)
+        recent_emotions_raw = state.get("recent_emotions", "[]")
         try:
             if isinstance(recent_emotions_raw, str):
                 recent_emotions: list[object] = json.loads(recent_emotions_raw)
@@ -130,100 +256,136 @@ class AlertAgent(BaseAgent):
 
         normalized_recent = _normalize_recent_emotion_labels(recent_emotions)
         last_three = normalized_recent[-3:]
-        negative_labels = {emotion.value for emotion in EmotionLabel.negative()}
+        negative_labels = {e.value for e in EmotionLabel.negative()}
 
         if len(last_three) == 3 and all(
             label in negative_labels for label in last_three
         ):
             active_factors.append(AlertFactor.F3_ESCALATION.value)
+            logger.debug("AlertAgent: F3 triggered — last_three=%s", last_three)
 
+        # F4 — vulnerability (minors always count)
         if is_minor:
             active_factors.append(AlertFactor.F4_VULNERABILITY.value)
 
-        has_explicit, _ = check_explicit_statement(transcript)
+        # F5 — explicit statement of intent
+        has_explicit, matched_explicit_kw = check_explicit_statement(transcript)
         if has_explicit:
             active_factors.append(AlertFactor.F5_EXPLICIT_STATEMENT.value)
+            logger.debug("AlertAgent: F5 triggered — %s", matched_explicit_kw)
 
+        # De-duplicate while preserving order (dict.fromkeys idiom).
         active_factors = list(dict.fromkeys(active_factors))
-
         active_count = len(active_factors)
-        alert_level = _compute_alert_level(active_count, is_minor)
 
-        ctx.session.state["alert_level"] = alert_level.value
-        ctx.session.state["alert_active_count"] = str(active_count)
+        # ── Level computation ─────────────────────────────────────────────────
+        alert_level = _compute_alert_level(active_count, threshold=threshold)
 
         logger.info(
-            "Alert factors evaluated [session=%s, user=%s, level=%s, count=%s, "
-            "factors=%s]",
-            session_id,
-            user_id,
+            "Alert factors evaluated [session=%s user=%s level=%s count=%d/%d "
+            "factors=%s is_minor=%s]",
+            session_id[:8] if session_id else "?",
+            user_id[:8] if user_id else "?",
             alert_level.value,
             active_count,
+            threshold,
             active_factors,
+            is_minor,
         )
 
-        if (
-            alert_level in (AlertLevel.HIGH, AlertLevel.CRISIS)
-            and not already_dispatched
-        ):
-            await self._dispatch_alert(
+        # ── Dispatch if threshold met ──────────────────────────────────────────
+        dispatch_succeeded: bool | None = None
+
+        if alert_level in (AlertLevel.HIGH, AlertLevel.CRISIS):
+            dispatch_succeeded = await self._dispatch_alert(
                 ctx=ctx,
                 active_factors=active_factors,
                 alert_level=alert_level,
+                session_id=session_id,
+                user_id=user_id,
             )
+
+        # ── Write state delta ─────────────────────────────────────────────────
+        state_delta: dict[str, Any] = {
+            "alert_level": alert_level.value,
+            "alert_active_count": active_count,  # int, not str
+            "alert_factors": active_factors,
+        }
+
+        if dispatch_succeeded is True:
+            state_delta["alert_dispatched"] = "true"
+            state_delta["alert_dispatch_status"] = "ok"
+        elif dispatch_succeeded is False:
+            # Mark dispatched even on failure — we don't want to retry within
+            # the same session and potentially spam a failed guardian lookup.
+            state_delta["alert_dispatched"] = "true"
+            state_delta["alert_dispatch_status"] = "failed"
 
         yield Event(
             author=self.name,
-            actions=EventActions(
-                state_delta={
-                    "alert_level": alert_level.value,
-                    "alert_active_count": str(active_count),
-                }
-            ),
+            actions=EventActions(state_delta=state_delta),
         )
+
+    # ── Alert dispatch ────────────────────────────────────────────────────────
 
     async def _dispatch_alert(
         self,
         ctx: InvocationContext,
         active_factors: list[str],
         alert_level: AlertLevel,
-    ) -> None:
-        """Dispatch guardian alert and persist the alert row."""
-        session_id = ctx.session.state.get("session_id", "")
-        user_id = ctx.session.state.get("user_id", "")
+        session_id: str,
+        user_id: str,
+    ) -> bool:
+        """Dispatch guardian SMS and persist the alert record.
+
+        Returns:
+            True  — SMS sent and DB record persisted successfully.
+            False — Some or all of the dispatch failed (already logged).
+
+        Never raises — alert dispatch failures must not crash the pipeline.
+        The caller always marks the session as dispatched regardless of the
+        return value, to prevent retry spam on the same session.
+        """
+        sms_sent = False
+        guardian_notified_at: str | None = None
+        dispatch_succeeded = False
 
         try:
             client = await get_service_client()
 
-            guardian_result = (
-                await client.table("guardian_links")
+            # ── Fetch guardian links ──────────────────────────────────────────
+            guardian_result = await asyncio.wait_for(
+                client.table("guardian_links")
                 .select("guardian_user_id")
                 .eq("patient_user_id", user_id)
                 .eq("can_view_alerts", True)
-                .execute()
+                .execute(),
+                timeout=_DB_TIMEOUT_SECONDS,
             )
 
-            profile_result = (
-                await client.table("user_profiles")
+            # ── Fetch patient display name ────────────────────────────────────
+            profile_result = await asyncio.wait_for(
+                client.table("user_profiles")
                 .select("display_name")
                 .eq("user_id", user_id)
                 .maybe_single()
-                .execute()
+                .execute(),
+                timeout=_DB_TIMEOUT_SECONDS,
             )
 
             profile_data = profile_result.data if profile_result is not None else None
             display_name: str = (
-                str(profile_data.get("display_name", "your patient"))
+                str(profile_data.get("display_name") or "your patient")
                 if isinstance(profile_data, dict)
                 else "your patient"
             )
 
-            sms_sent = False
-            guardian_notified_at = None
+            # ── Send SMS to each guardian ─────────────────────────────────────
+            guardian_data = (
+                guardian_result.data if guardian_result is not None else []
+            ) or []
 
-            guardian_data = guardian_result.data if guardian_result is not None else []
-
-            for link in guardian_data or []:
+            for link in guardian_data:
                 if not isinstance(link, dict):
                     continue
 
@@ -232,8 +394,9 @@ class AlertAgent(BaseAgent):
                     continue
 
                 try:
-                    guardian_auth = await client.auth.admin.get_user_by_id(
-                        str(guardian_id)
+                    guardian_auth = await asyncio.wait_for(
+                        client.auth.admin.get_user_by_id(str(guardian_id)),
+                        timeout=_AUTH_LOOKUP_TIMEOUT_SECONDS,
                     )
                     user_metadata = (
                         guardian_auth.user.user_metadata
@@ -241,15 +404,15 @@ class AlertAgent(BaseAgent):
                         else None
                     )
                     phone: str | None = (
-                        str(user_metadata.get("phone"))
+                        str(user_metadata["phone"]).strip()
                         if isinstance(user_metadata, dict)
-                        and user_metadata.get("phone") is not None
+                        and user_metadata.get("phone")
                         else None
                     )
 
                     if not phone:
                         logger.warning(
-                            "Guardian phone missing [guardian=%s]",
+                            "AlertAgent: guardian phone missing [guardian=%s]",
                             str(guardian_id)[:8],
                         )
                         continue
@@ -264,18 +427,24 @@ class AlertAgent(BaseAgent):
                     sms_sent = True
                     guardian_notified_at = datetime.now(UTC).isoformat()
 
+                except asyncio.TimeoutError:
+                    logger.error(
+                        "AlertAgent: guardian auth lookup timed out [guardian=%s]",
+                        str(guardian_id)[:8],
+                    )
                 except Exception as exc:
                     logger.error(
-                        "Guardian SMS failed [guardian=%s]: %s",
+                        "AlertAgent: guardian SMS failed [guardian=%s]: %s",
                         str(guardian_id)[:8],
                         exc,
                     )
 
-            await (
+            # ── Persist the alert record ──────────────────────────────────────
+            await asyncio.wait_for(
                 client.table("alerts")
                 .insert(
                     {
-                        "session_id": session_id,
+                        "session_id": session_id or None,
                         "user_id": user_id,
                         "alert_level": alert_level.value,
                         "alert_factors": active_factors,
@@ -284,59 +453,104 @@ class AlertAgent(BaseAgent):
                         "sms_sent": sms_sent,
                     }
                 )
-                .execute()
+                .execute(),
+                timeout=_DB_TIMEOUT_SECONDS,
             )
 
             ctx.session.state["post_alert_message"] = get_post_alert_message()
-            ctx.session.state["alert_dispatched"] = "true"
 
             logger.warning(
-                "ALERT DISPATCHED [session=%s, user=%s, level=%s, factors=%s, "
-                "sms_sent=%s]",
-                session_id,
-                user_id,
+                "ALERT DISPATCHED [session=%s user=%s level=%s factors=%s sms_sent=%s]",
+                session_id[:8] if session_id else "?",
+                user_id[:8] if user_id else "?",
                 alert_level.value,
                 active_factors,
                 sms_sent,
             )
 
+            dispatch_succeeded = True
+
+        except asyncio.TimeoutError:
+            logger.error(
+                "AlertAgent: dispatch timed out [session=%s user=%s level=%s]",
+                session_id[:8] if session_id else "?",
+                user_id[:8] if user_id else "?",
+                alert_level.value,
+            )
+            dispatch_succeeded = False
+            await self._persist_fallback_alert(
+                alert_level=alert_level,
+                active_factors=active_factors,
+                session_id=session_id,
+                user_id=user_id,
+            )
+            ctx.session.state["post_alert_message"] = get_post_alert_message()
+
         except Exception as exc:
             logger.error(
-                "Alert dispatch failed [session=%s, user=%s]: %s",
-                session_id,
-                user_id,
+                "AlertAgent: dispatch failed [session=%s user=%s level=%s]: %s",
+                session_id[:8] if session_id else "?",
+                user_id[:8] if user_id else "?",
+                alert_level.value,
                 exc,
             )
-
-            try:
-                client = await get_service_client()
-
-                await (
-                    client.table("alerts")
-                    .insert(
-                        {
-                            "session_id": session_id,
-                            "user_id": user_id,
-                            "alert_level": alert_level.value,
-                            "alert_factors": active_factors,
-                            "notified_guardian": False,
-                            "guardian_notified_at": None,
-                            "sms_sent": False,
-                        }
-                    )
-                    .execute()
-                )
-
-            except Exception as db_exc:
-                logger.error(
-                    "Failed to persist fallback alert record [session=%s, user=%s]: %s",
-                    session_id,
-                    user_id,
-                    db_exc,
-                )
-
+            dispatch_succeeded = False
+            await self._persist_fallback_alert(
+                alert_level=alert_level,
+                active_factors=active_factors,
+                session_id=session_id,
+                user_id=user_id,
+            )
             ctx.session.state["post_alert_message"] = get_post_alert_message()
-            ctx.session.state["alert_dispatched"] = "true"
 
+        return dispatch_succeeded
+
+    async def _persist_fallback_alert(
+        self,
+        *,
+        alert_level: AlertLevel,
+        active_factors: list[str],
+        session_id: str,
+        user_id: str,
+    ) -> None:
+        """Best-effort: write an alert record even when the main dispatch path failed.
+
+        This ensures the alert is visible in the guardian dashboard even if
+        the SMS send failed, so a human can follow up manually.
+        Never raises — a double-failure is logged and silently swallowed.
+        """
+        try:
+            client = await get_service_client()
+            await asyncio.wait_for(
+                client.table("alerts")
+                .insert(
+                    {
+                        "session_id": session_id or None,
+                        "user_id": user_id,
+                        "alert_level": alert_level.value,
+                        "alert_factors": active_factors,
+                        "notified_guardian": False,
+                        "guardian_notified_at": None,
+                        "sms_sent": False,
+                    }
+                )
+                .execute(),
+                timeout=_DB_TIMEOUT_SECONDS,
+            )
+            logger.info(
+                "AlertAgent: fallback alert record persisted [session=%s user=%s]",
+                session_id[:8] if session_id else "?",
+                user_id[:8] if user_id else "?",
+            )
+        except Exception as db_exc:
+            logger.error(
+                "AlertAgent: fallback alert record also failed [session=%s user=%s]: %s",
+                session_id[:8] if session_id else "?",
+                user_id[:8] if user_id else "?",
+                db_exc,
+            )
+
+
+# ── Singleton ─────────────────────────────────────────────────────────────────
 
 alert_agent = AlertAgent(name="alert_agent")
