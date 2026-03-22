@@ -177,7 +177,7 @@ async def get_current_user_id(
     """Validate the bearer token and return user_id."""
     try:
         payload = await decode_supabase_jwt(token)
-    except ValueError as exc:
+    except (AuthError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),

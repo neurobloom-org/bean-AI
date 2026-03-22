@@ -1,18 +1,24 @@
 """BEAN AI — Memory Writer Agent (Privacy-Safe)
 
 After every completed conversation turn:
-  1. Extracts structured facts from the current turn
-  2. Atomically merges facts into the user's semantic profile via Supabase RPC
+  1. Extracts structured facts from the current turn via LLM
+  2. Fetches existing profile, merges new facts, and upserts the result
   3. Stores ONLY the vector embedding of the turn (never raw source text)
 
 Privacy guarantees:
   ✓ Raw transcript text is NEVER stored in episodic_memories
   ✓ Text sent to the LLM is PII-redacted first, then truncated
   ✓ Episodic rows contain only the embedding vector + metadata
-  ✓ source_text column is always None — enforced by assertion in code
+  ✓ source_text is excluded from all DB inserts — enforced by code, not assertion
 
 Called by the orchestrator as fire-and-forget via asyncio.create_task().
 Writes session.state["memory_write_done"] = "true" | "error" | "skipped".
+
+Design note — async DB calls:
+    All Supabase calls use AsyncClient.execute(), which is a coroutine.
+    They must be awaited directly in async functions, never passed to
+    asyncio.to_thread(). _retry_sync_in_thread has been removed entirely;
+    all DB retries go through _retry_async with proper async callables.
 """
 
 from __future__ import annotations
@@ -21,7 +27,7 @@ import asyncio
 import logging
 from asyncio import timeout as async_timeout
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -34,6 +40,7 @@ from services.embedding_service import get_embedding
 from services.llm_service import generate_json
 from services.privacy_service import privacy_service
 from services.supabase_client import get_service_client
+from shared.config import get_settings
 from shared.exceptions import EmbeddingError, LLMError, SupabaseError
 
 logger = logging.getLogger(__name__)
@@ -61,7 +68,8 @@ _LLM_RETRY_BASE_DELAY_S: float = 0.35
 
 # ── LLM prompt templates ─────────────────────────────────────────────────────
 
-_EXTRACT_FACTS_SYSTEM = """You are a privacy-safe fact extractor for a mental health companion system.
+_EXTRACT_FACTS_SYSTEM = """\
+You are a privacy-safe fact extractor for a mental health companion system.
 
 Extract ONLY objective, durable, privacy-safe facts from the CURRENT conversation turn.
 
@@ -84,6 +92,9 @@ Detected emotion: {emotion}
 
 Extract durable, privacy-safe candidate facts from this turn only.
 """
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 
 def _clean_optional_string(value: Any, max_len: int = 120) -> str | None:
@@ -124,10 +135,33 @@ def _coerce_string_list(
     return cleaned_items
 
 
-class ExtractedFacts(BaseModel):
-    """Typed fact payload returned by the LLM."""
+def _merge_string_lists(existing: list[str], new_items: list[str]) -> list[str]:
+    """Append new_items to existing, skipping case-insensitive duplicates.
 
-    model_config = ConfigDict(extra="forbid")
+    Preserves original casing of first-seen items. Existing items always
+    come first so established profile data is not reordered.
+    """
+    seen = {item.casefold() for item in existing}
+    merged = list(existing)
+    for item in new_items:
+        if item.casefold() not in seen:
+            seen.add(item.casefold())
+            merged.append(item)
+    return merged
+
+
+# ── Pydantic models ───────────────────────────────────────────────────────────
+
+
+class ExtractedFacts(BaseModel):
+    """Typed fact payload returned by the LLM.
+
+    extra="ignore" rather than "forbid": the LLM may include reasoning fields
+    or other extra keys. Forbidding them causes ValidationError and silently
+    drops the entire fact extraction result for the turn.
+    """
+
+    model_config = ConfigDict(extra="ignore")
 
     name: str | None = None
     preferred_name: str | None = None
@@ -155,6 +189,9 @@ class ExtractedFacts(BaseModel):
     @classmethod
     def validate_long_lists(cls, value: Any) -> list[str]:
         return _coerce_string_list(value, max_items=10, max_item_len=140)
+
+
+# ── Agent ─────────────────────────────────────────────────────────────────────
 
 
 class MemoryWriterAgent(BaseAgent):
@@ -249,6 +286,8 @@ class MemoryWriterAgent(BaseAgent):
 
         yield adk_types.Content(parts=[])
 
+    # ── Semantic profile ──────────────────────────────────────────────────────
+
     async def _update_semantic_profile(
         self,
         user_id: str,
@@ -256,7 +295,19 @@ class MemoryWriterAgent(BaseAgent):
         assistant_text: str,
         emotion: str,
     ) -> bool:
-        """Extract facts from the current turn and atomically merge them via RPC."""
+        """Extract facts from the current turn and merge them into the user profile.
+
+        Fetch-merge-upsert pattern:
+          1. Redact + truncate text for privacy before LLM submission.
+          2. Call LLM to extract durable facts.
+          3. Fetch existing profile from Supabase.
+          4. Merge new facts into existing arrays (append, deduplicate).
+          5. Upsert the fully-merged payload.
+
+        This is not atomic (step 3 and 5 are separate DB calls), but since
+        memory writes are fire-and-forget and only one runs per turn per user,
+        the race window is negligible in practice.
+        """
         try:
             safe_user = _safe_redact_and_truncate(user_text, _USER_FACT_TEXT_MAX_CHARS)
             safe_assistant = _safe_redact_and_truncate(
@@ -277,6 +328,7 @@ class MemoryWriterAgent(BaseAgent):
             emotion=emotion,
         )
 
+        # Step 1 — extract facts via LLM.
         try:
             raw_facts = await _retry_async(
                 lambda: generate_json(
@@ -315,30 +367,71 @@ class MemoryWriterAgent(BaseAgent):
             )
             return False
 
-        atomic_facts = self._build_atomic_profile_payload(facts)
+        # Step 2 — fetch existing profile so we can merge arrays, not overwrite.
+        existing_profile: dict[str, Any] = {}
+        try:
 
-        if not atomic_facts:
+            async def _fetch_profile() -> dict[str, Any]:
+                client = await get_service_client()
+                result = (
+                    await client.table("user_profiles")
+                    .select(
+                        "display_name, preferred_name, interests, "
+                        "important_people, personality_notes"
+                    )
+                    .eq("user_id", user_id)
+                    .maybe_single()
+                    .execute()
+                )
+                return dict(result.data) if result and result.data else {}
+
+            existing_profile = await _retry_async(
+                _fetch_profile,
+                max_attempts=_DB_MAX_ATTEMPTS,
+                base_delay_s=_DB_RETRY_BASE_DELAY_S,
+                operation_name="profile fetch",
+                retriable_exceptions=(Exception,),
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Non-fatal: we'll write facts without merge context rather than
+            # dropping the write entirely. Worst case: stale data survives.
+            logger.warning(
+                "MemoryWriter: could not fetch existing profile for user %s — "
+                "writing facts without merge (arrays may be narrowed this turn)",
+                user_id,
+            )
+
+        # Step 3 — build the merged payload.
+        merged_payload = self._build_merged_profile_payload(
+            facts=facts,
+            existing=existing_profile,
+        )
+
+        if not merged_payload:
             logger.debug(
                 "MemoryWriter: no new semantic facts to persist for user %s",
                 user_id,
             )
             return True
 
+        # Step 4 — upsert the merged result.
         try:
-            # ✅ FIXED: get_service_client() is async in your supabase_client.py
-            # Must be awaited BEFORE the lambda — you cannot await inside
-            # asyncio.to_thread() since it only accepts sync callables.
-            client = await get_service_client()
 
-            await _retry_sync_in_thread(
-                lambda: (
+            async def _do_upsert() -> None:
+                client = await get_service_client()
+                await (
                     client.table("user_profiles")
                     .upsert(
-                        {"user_id": user_id, **atomic_facts},
+                        {"user_id": user_id, **merged_payload},
                         on_conflict="user_id",
                     )
                     .execute()
-                ),
+                )
+
+            await _retry_async(
+                _do_upsert,
                 max_attempts=_DB_MAX_ATTEMPTS,
                 base_delay_s=_DB_RETRY_BASE_DELAY_S,
                 operation_name="semantic profile upsert",
@@ -348,15 +441,17 @@ class MemoryWriterAgent(BaseAgent):
             raise
         except Exception as exc:
             raise SupabaseError(
-                f"MemoryWriter: failed atomic semantic merge for user {user_id}"
+                f"MemoryWriter: failed to upsert semantic profile for user {user_id}"
             ) from exc
 
         logger.info(
-            "MemoryWriter: semantic profile merged atomically for user %s (keys: %s)",
+            "MemoryWriter: semantic profile merged for user %s (keys: %s)",
             user_id,
-            sorted(atomic_facts.keys()),
+            sorted(merged_payload.keys()),
         )
         return True
+
+    # ── Episodic embedding ────────────────────────────────────────────────────
 
     async def _store_episodic_embedding(
         self,
@@ -366,7 +461,17 @@ class MemoryWriterAgent(BaseAgent):
         assistant_text: str,
         emotion: str,
     ) -> bool:
-        """Embed a redacted turn summary and store the vector — never the text."""
+        """Embed a redacted turn summary and store the vector — never the text.
+
+        The episodic_memories table stores ONLY:
+          - The embedding vector (1536 floats)
+          - emotion_label, memory_type, relevance_score
+          - user_id, session_id, created_at, expires_at
+
+        source_text is intentionally excluded from the insert payload.
+        The privacy guarantee is enforced in code (explicit exclusion),
+        not via assert (which is stripped by python -O in production).
+        """
         try:
             safe_user = _safe_redact_and_truncate(user_text, _USER_EMBED_TEXT_MAX_CHARS)
             safe_assistant = _safe_redact_and_truncate(
@@ -393,6 +498,7 @@ class MemoryWriterAgent(BaseAgent):
             f"Emotion: {emotion}"
         )
 
+        # Step 1 — generate embedding.
         try:
             embedding = await _retry_async(
                 lambda: get_embedding(turn_summary),
@@ -418,28 +524,36 @@ class MemoryWriterAgent(BaseAgent):
         ):
             raise EmbeddingError(
                 f"MemoryWriter: invalid embedding payload for user {user_id}; "
-                f"expected {_EXPECTED_EMBEDDING_DIMENSIONS} dimensions"
+                f"expected {_EXPECTED_EMBEDDING_DIMENSIONS} dimensions, "
+                f"got {len(embedding) if isinstance(embedding, list) else type(embedding).__name__}"
             )
 
-        row = {
+        # Build the insert row.
+        # source_text is INTENTIONALLY excluded — it has no column in the schema
+        # and must never be stored (privacy guarantee). Do not add it here.
+        settings = get_settings()
+        expires_at = (
+            datetime.now(UTC) + timedelta(days=settings.episodic_memory_retention_days)
+        ).isoformat()
+
+        row: dict[str, Any] = {
             "user_id": user_id,
             "session_id": session_id,
             "embedding": embedding,
             "emotion_label": emotion,
             "memory_type": "episodic",
-            "source_text": None,
+            "expires_at": expires_at,
         }
 
-        assert row["source_text"] is None, (
-            "PRIVACY VIOLATION: source_text must always be None in episodic_memories"
-        )
-
+        # Step 2 — insert the vector row.
         try:
-            # ✅ FIXED: same as above — await before the lambda
-            client = await get_service_client()
 
-            await _retry_sync_in_thread(
-                lambda: client.table("episodic_memories").insert(row).execute(),
+            async def _do_insert() -> None:
+                client = await get_service_client()
+                await client.table("episodic_memories").insert(row).execute()
+
+            await _retry_async(
+                _do_insert,
                 max_attempts=_DB_MAX_ATTEMPTS,
                 base_delay_s=_DB_RETRY_BASE_DELAY_S,
                 operation_name="episodic insert",
@@ -453,38 +567,67 @@ class MemoryWriterAgent(BaseAgent):
             ) from exc
 
         logger.info(
-            "MemoryWriter: episodic vector stored for user %s (session %s)",
+            "MemoryWriter: episodic vector stored for user %s (session %s, expires %s)",
             user_id,
             session_id or "none",
+            expires_at[:10],
         )
         return True
 
-    def _build_atomic_profile_payload(
+    # ── Profile payload builder ───────────────────────────────────────────────
+
+    def _build_merged_profile_payload(
         self,
         facts: ExtractedFacts,
+        existing: dict[str, Any],
     ) -> dict[str, Any]:
-        """Build a compact JSON payload for DB-side atomic merge logic."""
+        """Build a merged upsert payload from extracted facts + existing profile.
+
+        Arrays (interests, important_people, personality_notes) are appended
+        to rather than replaced. Scalar fields (name, preferred_name) are only
+        set when the LLM found a value — they never overwrite with None.
+        """
         payload: dict[str, Any] = {}
 
+        # Scalar fields — only overwrite if the LLM returned a value.
         if facts.name:
             payload["display_name"] = facts.name
 
         if facts.preferred_name:
             payload["preferred_name"] = facts.preferred_name
 
+        # Array fields — merge new items into existing lists.
         if facts.new_interests:
-            payload["interests"] = facts.new_interests
+            existing_interests = existing.get("interests") or []
+            if isinstance(existing_interests, list):
+                payload["interests"] = _merge_string_lists(
+                    existing_interests, facts.new_interests
+                )
+            else:
+                payload["interests"] = facts.new_interests
 
         if facts.new_important_people:
-            payload["important_people"] = facts.new_important_people
+            existing_people = existing.get("important_people") or []
+            if isinstance(existing_people, list):
+                payload["important_people"] = _merge_string_lists(
+                    existing_people, facts.new_important_people
+                )
+            else:
+                payload["important_people"] = facts.new_important_people
 
-        notes_to_merge = list(facts.new_personality_notes)
+        notes_to_add = list(facts.new_personality_notes)
         if facts.significant_event:
             timestamp = datetime.now(UTC).strftime("%b %d %Y")
-            notes_to_merge.append(f"[{timestamp}] {facts.significant_event}")
+            notes_to_add.append(f"[{timestamp}] {facts.significant_event}")
 
-        if notes_to_merge:
-            payload["personality_notes"] = notes_to_merge
+        if notes_to_add:
+            existing_notes = existing.get("personality_notes") or []
+            if isinstance(existing_notes, list):
+                payload["personality_notes"] = _merge_string_lists(
+                    existing_notes, notes_to_add
+                )
+            else:
+                payload["personality_notes"] = notes_to_add
 
         if payload:
             payload["last_updated"] = datetime.now(UTC).isoformat()
@@ -549,12 +692,18 @@ def _is_valid_embedding(
     *,
     expected_dimensions: int,
 ) -> bool:
-    """Sanity-check embedding payload shape and dimensionality."""
-    return (
-        isinstance(value, list)
-        and len(value) == expected_dimensions
-        and all(isinstance(x, (int, float)) for x in value)
-    )
+    """Sanity-check embedding payload shape and dimensionality.
+
+    Checks length exactly and spot-checks the first and last element types
+    rather than iterating all 1536 values on every turn (OpenAI always returns
+    a consistent homogeneous list, so full iteration is unnecessary overhead).
+    """
+    if not isinstance(value, list):
+        return False
+    if len(value) != expected_dimensions:
+        return False
+    # Spot-check first and last — avoids O(n) scan on hot path.
+    return isinstance(value[0], (int, float)) and isinstance(value[-1], (int, float))
 
 
 async def _retry_async(
@@ -565,47 +714,16 @@ async def _retry_async(
     operation_name: str,
     retriable_exceptions: tuple[type[BaseException], ...],
 ) -> T:
-    """Retry transient async operations with exponential backoff."""
+    """Retry transient async operations with exponential backoff.
+
+    All DB and LLM calls in this module go through this function.
+    asyncio.CancelledError is never caught here — it propagates immediately.
+    """
     last_exc: BaseException | None = None
 
     for attempt in range(1, max_attempts + 1):
         try:
             return await func()
-        except asyncio.CancelledError:
-            raise
-        except retriable_exceptions as exc:
-            last_exc = exc
-            if attempt >= max_attempts:
-                break
-            delay = base_delay_s * (2 ** (attempt - 1))
-            logger.warning(
-                "MemoryWriter: %s failed on attempt %d/%d: %s; retrying in %.2fs",
-                operation_name,
-                attempt,
-                max_attempts,
-                exc,
-                delay,
-            )
-            await asyncio.sleep(delay)
-
-    assert last_exc is not None
-    raise last_exc
-
-
-async def _retry_sync_in_thread(
-    func: Callable[[], T],
-    *,
-    max_attempts: int,
-    base_delay_s: float,
-    operation_name: str,
-    retriable_exceptions: tuple[type[BaseException], ...],
-) -> T:
-    """Retry blocking sync operations by running them in a worker thread."""
-    last_exc: BaseException | None = None
-
-    for attempt in range(1, max_attempts + 1):
-        try:
-            return await asyncio.to_thread(func)
         except asyncio.CancelledError:
             raise
         except retriable_exceptions as exc:

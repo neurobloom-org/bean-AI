@@ -1,4 +1,21 @@
-"""BEAN AI v1 — Privacy-First Configuration."""
+"""BEAN AI v1 — Privacy-First Configuration.
+
+All settings are read from environment variables (or a .env file).
+Field names map directly to env var names (case-insensitive).
+For example, `supabase_url` reads from SUPABASE_URL.
+
+Alert threshold semantics:
+    alert_threshold        — factors required to trigger HIGH/CRISIS for adults (default 3)
+    minor_alert_threshold  — factors required to trigger HIGH/CRISIS for minors (default 2)
+    Minors have a lower threshold because F4 (vulnerability) is always pre-counted,
+    so they effectively start with one factor already active.
+
+    guardian_alert_cooldown_seconds — minimum seconds between guardian SMS alerts
+    for the same user. Prevents spam on long sessions with sustained crisis signals.
+    (Not yet implemented in AlertAgent — reserved for future use.)
+"""
+
+from __future__ import annotations
 
 from pydantic_settings import BaseSettings
 
@@ -59,18 +76,21 @@ class Settings(BaseSettings):  # type: ignore[misc]
 
     # ── Privacy & Data Retention ──────────────────────────────────────────────
     transcript_retention_hours: int = 24
-    emotion_retention_days: int = (
-        90  # FIX: was emotion_purge_retention_days in some files
-    )
-    episodic_memory_retention_days: int = (
-        365  # FIX: was episodic_memory_expiry_days in some files
-    )
+    emotion_retention_days: int = 90
+    episodic_memory_retention_days: int = 365
     session_retention_days: int = 30
     session_metadata_retention_days: int = 730
 
-    # ── Safety ───────────────────────────────────────────────────────────────
-    alert_threshold: int = 3
-    minor_alert_threshold: int = 3
+    # ── Safety ────────────────────────────────────────────────────────────────
+    # Number of active safety factors required to reach AlertLevel.HIGH.
+    # Adults need 3 of 5 factors; minors need only 2 because F4 (vulnerability)
+    # is always pre-counted for them, so they effectively start at 1.
+    alert_threshold: int = 3  # adult trigger point
+    minor_alert_threshold: int = 2  # minor trigger point (was wrongly 3 before)
+
+    # Minimum seconds between guardian SMS alerts for the same user.
+    # Prevents alert spam during long sessions with sustained crisis signals.
+    # Reserved for future use — not yet implemented in AlertAgent.
     guardian_alert_cooldown_seconds: int = 300
 
     # ── Rate Limiting ─────────────────────────────────────────────────────────
@@ -107,9 +127,7 @@ class Settings(BaseSettings):  # type: ignore[misc]
     google_oauth_client_secret: str = ""
     google_oauth_redirect_uri: str = "http://localhost:8080/api/v1/auth/google/callback"
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Aliases — LlmAgents reference these names at module level
-    # ─────────────────────────────────────────────────────────────────────────
+    # ── Aliases ───────────────────────────────────────────────────────────────
 
     @property
     def gemini_flash_model(self) -> str:
@@ -123,6 +141,7 @@ class Settings(BaseSettings):  # type: ignore[misc]
 
     @property
     def cors_origins_list(self) -> list[str]:
+        """Return CORS origins as a list, split on commas."""
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
     @property
@@ -147,5 +166,6 @@ def get_settings() -> Settings:
 
 
 def reset_settings() -> None:
+    """Reset the cached settings singleton. Used in tests."""
     global _settings
     _settings = None
