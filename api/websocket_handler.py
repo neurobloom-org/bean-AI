@@ -44,7 +44,6 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -188,13 +187,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     # ── Deepgram STT ──────────────────────────────────────────────────────────
     try:
         session.deepgram = DeepgramConnection(
-            on_transcript=lambda t: asyncio.create_task(
-                _handle_transcript(session, t)
-            ),
-            on_utterance_end=lambda: asyncio.create_task(
-                _handle_utterance_end(session)
-            ),
-        )
+            
+                on_transcript=_handle_transcript,
+                on_utterance_end=_handle_utterance_end,
+        ),
+        
         await session.deepgram.connect()
     except Exception as exc:
         logger.error("Deepgram connection failed: %s", exc)

@@ -1,4 +1,4 @@
-"""BEAN AI v5 — FastAPI application entry point.
+"""BEAN AI v1 — FastAPI application entry point.
 
 Lifespan contract:
   Startup  — DB health check → background tasks → ready
@@ -30,7 +30,7 @@ from api.middleware.rate_limiter import RateLimiterMiddleware
 from api.routes import alerts, auth, emotions, guardian, health, sessions, tasks
 from api.websocket_handler import router as ws_router
 from background.emotion_purge import run_emotion_purge_loop
-from background.reminder_check import run_reminder_loop
+from background.reminder_check import run_reminder_check_loop
 from background.session_cleanup import run_all_purges, run_session_cleanup_loop, run_transcript_purge_loop
 from services.supabase_client import check_db_health, close_clients
 from shared.config import get_settings
@@ -88,7 +88,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 run_session_cleanup_loop(), name="session-cleanup"
             ),
             asyncio.create_task(
-                run_reminder_loop(), name="reminder-check"
+                run_reminder_check_loop(), name="reminder-check"
             ),
             asyncio.create_task(
                 run_emotion_purge_loop(), name="emotion-purge"
