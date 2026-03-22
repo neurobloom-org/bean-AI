@@ -1,4 +1,4 @@
-"""BEAN AI v5 — Orchestrator Agent.
+"""BEAN AI v1 — Orchestrator Agent.
 
 The central coordinator that runs every conversation turn:
 
@@ -55,7 +55,7 @@ from google.adk.events import Event
 from google.adk.runners import InMemoryRunner
 from google.genai import types as genai_types
 
-from services.llm_service import generate_json
+from services.llm_service import generate, generate_json
 from services.privacy_service import privacy_service
 from services.safety_service import (
     check_crisis_keywords,  # FIX: was a deferred import inside _run_async_impl
@@ -66,6 +66,16 @@ from shared.exceptions import CrisisDetectedError
 from shared.schemas import UserProfile as UserProfileSchema
 
 logger = logging.getLogger(__name__)
+
+_ORCHESTRATOR_TASKS: set[asyncio.Task] = set()
+
+
+def _create_tracked_task(coro, *, name: str) -> asyncio.Task:
+    task = asyncio.create_task(coro, name=name)
+    _ORCHESTRATOR_TASKS.add(task)
+    task.add_done_callback(_ORCHESTRATOR_TASKS.discard)
+    return task
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants
@@ -204,7 +214,7 @@ class BEANOrchestrator(BaseAgent):
             # — that would double-fire and risk sending two guardian SMSes.
             # Pass route="alert" to _run_background_tasks, which now skips
             # _background_safety_check for the alert route.
-            asyncio.create_task(
+            _create_tracked_task(
                 self._handle_crisis(user_id, session_id, user_text, emotion),
                 name=f"crisis-{turn_id[:8]}",
             )
@@ -216,7 +226,7 @@ class BEANOrchestrator(BaseAgent):
                 ),
             )
 
-            asyncio.create_task(
+            _create_tracked_task(
                 self._run_background_tasks(
                     user_id=user_id,
                     session_id=session_id,
@@ -263,7 +273,7 @@ class BEANOrchestrator(BaseAgent):
         )
 
         # ── Phase 5: Non-blocking background tasks ────────────────────────────
-        asyncio.create_task(
+        _create_tracked_task(
             self._run_background_tasks(
                 user_id=user_id,
                 session_id=session_id,
@@ -411,8 +421,6 @@ class BEANOrchestrator(BaseAgent):
         memory_context: str,
     ) -> str:
         """Direct LLM fallback when a sub-agent fails to produce output."""
-        from services.llm_service import generate
-
         _FALLBACKS: dict[str, tuple[str, str]] = {
             "casual": (
                 "casual_chat",
@@ -605,21 +613,21 @@ class BEANOrchestrator(BaseAgent):
         emotion: str,
     ) -> None:
         """Extract facts and write episodic embedding (privacy-safe)."""
-        from agents.memory_writer.agent import memory_writer_agent as mwa
+        from agents.memory_writer.agent import memory_writer_agent
 
         try:
-            async for _ in mwa.run_async(
+            await _run_sub_agent(
+                memory_writer_agent,
                 user_id=user_id,
-                session_id=session_id,
-                session_state={
+                user_text=user_text,
+                state={
                     "user_id": user_id,
                     "session_id": session_id,
                     "current_transcript": user_text,
                     "response_text": response_text,
                     "current_emotion": emotion,
                 },
-            ):
-                pass
+            )
         except Exception as exc:
             logger.error("Background memory write failed: %s", exc)
 
