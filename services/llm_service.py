@@ -22,6 +22,12 @@ SDK note:
   Uses google-genai (google.genai) — the current supported package.
   The old google-generativeai package is deprecated and no longer receives
   updates. See: https://github.com/google-gemini/deprecated-generative-ai-python
+
+Exception contract:
+  generate()        raises LLMError on generation failure.
+  generate_json()   raises LLMError on generation failure, ValueError on bad JSON.
+  generate_stream() raises LLMError on generation failure.
+  All three propagate asyncio.CancelledError without wrapping.
 """
 
 from __future__ import annotations
@@ -36,13 +42,26 @@ from google import genai
 from google.genai import types as genai_types
 
 from shared.config import get_settings
+from shared.exceptions import LLMError
+
+__all__ = [
+    "generate",
+    "generate_json",
+    "generate_stream",
+    "get_model_for_task",
+    "get_tier",
+    "route_message",
+    "extract_facts",
+    "therapeutic_response",
+    "assess_safety",
+    "LLMTier",
+    "TASK_TIER_MAP",
+]
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Task → Tier mapping
-# ---------------------------------------------------------------------------
+# ── Task → tier mapping ───────────────────────────────────────────────────────
 
 
 class LLMTier(str, Enum):
@@ -73,29 +92,35 @@ def get_model_for_task(task: str) -> str:
     settings = get_settings()
     tier = TASK_TIER_MAP.get(task, LLMTier.CHEAP)
     model = settings.llm_pro_model if tier == LLMTier.PRO else settings.llm_cheap_model
-    logger.debug("Task '%s' → tier=%s model=%s", task, tier.value, model)
+    logger.debug("Task %r → tier=%s model=%s", task, tier.value, model)
     return model
 
 
 def get_tier(task: str) -> LLMTier:
-    """Return the tier for a given task."""
+    """Return the LLMTier for a given task (defaults to CHEAP for unknown tasks)."""
     return TASK_TIER_MAP.get(task, LLMTier.CHEAP)
 
 
 def _get_client() -> genai.Client:
     """Create a google.genai Client with the configured API key.
 
-    A new Client is created per-call. This is intentional — Client objects
-    are lightweight and stateless, and creating one per-call avoids any
-    thread-safety concerns with a shared singleton in an async context.
+    A new Client is created per-call. Client objects are lightweight and
+    stateless; creating per-call avoids thread-safety concerns in async context.
+
+    Raises:
+        LLMError: If GOOGLE_API_KEY is not configured.
     """
     settings = get_settings()
+
+    if not settings.google_api_key:
+        raise LLMError(
+            "GOOGLE_API_KEY is not configured — cannot make LLM calls"
+        )
+
     return genai.Client(api_key=settings.google_api_key)
 
 
-# ---------------------------------------------------------------------------
-# Core generation functions
-# ---------------------------------------------------------------------------
+# ── Core generation functions ─────────────────────────────────────────────────
 
 
 async def generate(
@@ -108,23 +133,26 @@ async def generate(
     """Generate a plain text response using the appropriate model for the task.
 
     Args:
-        task:        Task name from TASK_TIER_MAP — determines model tier.
+        task:        Task name from TASK_TIER_MAP — determines model and tier.
         prompt:      The user/content prompt to send.
-        system:      Optional system instruction.
-        temperature: Override temperature (defaults to tier-specific value).
-        max_tokens:  Override max output tokens (defaults to tier-specific value).
+        system:      Optional system instruction (sent as system_instruction,
+                     not as part of the user turn).
+        temperature: Override temperature. Defaults to tier-specific setting.
+        max_tokens:  Override max output tokens. Defaults to tier-specific setting.
 
     Returns:
-        Generated text response (stripped).
+        Generated text response, stripped of leading/trailing whitespace.
+        Returns an empty string if the model returns no text (not an error).
 
     Raises:
-        RuntimeError: If generation fails.
+        LLMError:              If the API call fails for any reason.
+        asyncio.CancelledError: Propagated without wrapping.
     """
     settings = get_settings()
     model_name = get_model_for_task(task)
     tier = get_tier(task)
 
-    _temperature = (
+    resolved_temperature = (
         temperature
         if temperature is not None
         else (
@@ -133,7 +161,7 @@ async def generate(
             else settings.llm_cheap_temperature
         )
     )
-    _max_tokens = (
+    resolved_max_tokens = (
         max_tokens
         if max_tokens is not None
         else (
@@ -145,14 +173,14 @@ async def generate(
 
     config = genai_types.GenerateContentConfig(
         system_instruction=system,
-        temperature=_temperature,
-        max_output_tokens=_max_tokens,
+        temperature=resolved_temperature,
+        max_output_tokens=resolved_max_tokens,
     )
 
     try:
         client = _get_client()
 
-        # The new SDK's async interface lives on client.aio — no asyncio.to_thread needed.
+        # client.aio is the async interface — no asyncio.to_thread() needed.
         response = await client.aio.models.generate_content(
             model=model_name,
             contents=prompt,
@@ -170,6 +198,8 @@ async def generate(
         )
         return text
 
+    except LLMError:
+        raise
     except Exception as exc:
         logger.error(
             "LLM generation failed [task=%s model=%s]: %s",
@@ -177,7 +207,7 @@ async def generate(
             model_name,
             exc,
         )
-        raise RuntimeError(f"LLM failed for task '{task}': {exc}") from exc
+        raise LLMError(f"LLM generation failed for task '{task}': {exc}") from exc
 
 
 async def generate_json(
@@ -187,11 +217,21 @@ async def generate_json(
 ) -> dict[str, Any]:
     """Generate and parse a JSON response.
 
-    Forces temperature=0 and strips markdown fences before parsing.
+    Forces temperature=0 for deterministic JSON output.
+    Strips markdown code fences (```json ... ```) before parsing.
+
+    Args:
+        task:   Task name — determines model tier.
+        prompt: The user/content prompt. Should instruct the model to return JSON.
+        system: Optional system instruction.
+
+    Returns:
+        Parsed JSON response as a dict.
 
     Raises:
+        LLMError:  If generation fails.
         ValueError: If the model returns non-JSON output.
-        RuntimeError: If generation itself fails.
+        asyncio.CancelledError: Propagated without wrapping.
     """
     raw = await generate(
         task=task,
@@ -201,16 +241,17 @@ async def generate_json(
         max_tokens=512,
     )
 
-    # Strip markdown code fences (```json ... ```)
-    if raw.startswith("```"):
-        parts = raw.split("```")
-        raw = parts[1] if len(parts) > 1 else raw
-        if raw.startswith("json"):
-            raw = raw[4:]
-    raw = raw.strip()
+    # Strip markdown code fences the model may wrap the JSON in.
+    cleaned = raw
+    if cleaned.startswith("```"):
+        parts = cleaned.split("```")
+        cleaned = parts[1] if len(parts) > 1 else cleaned
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:]
+    cleaned = cleaned.strip()
 
     try:
-        return dict(json.loads(raw))
+        return dict(json.loads(cleaned))
     except json.JSONDecodeError as exc:
         logger.error(
             "JSON parse failed [task=%s]: %s\nRaw output (first 300 chars): %s",
@@ -218,7 +259,9 @@ async def generate_json(
             exc,
             raw[:300],
         )
-        raise ValueError(f"LLM returned non-JSON for task '{task}'") from exc
+        raise ValueError(
+            f"LLM returned non-JSON for task '{task}': {exc}"
+        ) from exc
 
 
 async def generate_stream(
@@ -226,17 +269,29 @@ async def generate_stream(
     prompt: str,
     system: str | None = None,
 ) -> AsyncGenerator[str, None]:
-    """Async generator that streams response chunks.
+    """Async generator that yields response text chunks as they arrive.
 
     Usage:
         async for chunk in generate_stream("therapeutic_chat", prompt):
             await ws.send_text(chunk)
+
+    Args:
+        task:   Task name — determines model tier.
+        prompt: The user/content prompt.
+        system: Optional system instruction.
+
+    Yields:
+        Non-empty text chunks as strings.
+
+    Raises:
+        LLMError:              If the stream fails to start or errors mid-stream.
+        asyncio.CancelledError: Propagated without wrapping.
     """
     settings = get_settings()
     model_name = get_model_for_task(task)
     tier = get_tier(task)
 
-    _temperature = (
+    resolved_temperature = (
         settings.llm_pro_temperature
         if tier == LLMTier.PRO
         else settings.llm_cheap_temperature
@@ -244,13 +299,15 @@ async def generate_stream(
 
     config = genai_types.GenerateContentConfig(
         system_instruction=system,
-        temperature=_temperature,
+        temperature=resolved_temperature,
     )
 
     try:
         client = _get_client()
 
-        async for chunk in await client.aio.models.generate_content_stream(
+        # generate_content_stream is an async generator function — calling it
+        # returns the async generator directly. Do NOT await it.
+        async for chunk in client.aio.models.generate_content_stream(
             model=model_name,
             contents=prompt,
             config=config,
@@ -258,14 +315,21 @@ async def generate_stream(
             if chunk.text:
                 yield chunk.text
 
-    except Exception as exc:
-        logger.error("Stream generation failed [task=%s]: %s", task, exc)
+    except LLMError:
         raise
+    except Exception as exc:
+        logger.error(
+            "LLM stream failed [task=%s model=%s]: %s",
+            task,
+            model_name,
+            exc,
+        )
+        raise LLMError(
+            f"LLM stream failed for task '{task}': {exc}"
+        ) from exc
 
 
-# ---------------------------------------------------------------------------
-# Convenience wrappers used by specific agents
-# ---------------------------------------------------------------------------
+# ── Convenience wrappers ──────────────────────────────────────────────────────
 
 
 async def route_message(context: str) -> dict[str, Any]:
@@ -279,7 +343,12 @@ async def extract_facts(prompt: str) -> dict[str, Any]:
 
 
 async def therapeutic_response(prompt: str, system: str) -> str:
-    """Therapeutic conversation — always uses Pro model."""
+    """Therapeutic conversation — always uses Pro model.
+
+    Args:
+        prompt: User message content only (not the full system prompt).
+        system: System instruction (persona, rules, context).
+    """
     return await generate("therapeutic_chat", prompt, system=system)
 
 
