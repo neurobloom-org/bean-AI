@@ -115,10 +115,10 @@ _VALID_ROUTES: frozenset[str] = frozenset(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # ADK runner helper
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 async def _run_sub_agent(
     agent: BaseAgent,
@@ -174,7 +174,9 @@ class BEANOrchestrator(BaseAgent):
 
     async def _run_async_impl(  # type: ignore[override]
         self, ctx: InvocationContext
-    ) -> AsyncGenerator[Event, None]:  # FIX: was adk_types.AsyncGenerator (wrong module)
+    ) -> AsyncGenerator[
+        Event, None
+    ]:  # FIX: was adk_types.AsyncGenerator (wrong module)
         state = ctx.session.state
         user_id: str = state["user_id"]
         session_id: str = state["session_id"]
@@ -257,9 +259,7 @@ class BEANOrchestrator(BaseAgent):
 
         yield Event(  # FIX: yield Event with content, not bare Content
             author=self.name,
-            content=genai_types.Content(
-                parts=[genai_types.Part(text=response_text)]
-            ),
+            content=genai_types.Content(parts=[genai_types.Part(text=response_text)]),
         )
 
         # ── Phase 5: Non-blocking background tasks ────────────────────────────
@@ -361,25 +361,31 @@ class BEANOrchestrator(BaseAgent):
         try:
             if route == "casual":
                 from agents.casual_chat.agent import casual_chat_agent
+
                 response_text, final_state = await _run_sub_agent(
                     casual_chat_agent, user_id, user_text, sub_state
                 )
 
             elif route == "therapy":
                 from agents.therapeutic_convo.agent import therapy_agent
+
                 response_text, final_state = await _run_sub_agent(
                     therapy_agent, user_id, user_text, sub_state
                 )
 
             elif route == "task":
                 from agents.task.agent import task_agent
-                sub_state["calendar_access_token"] = await self._get_calendar_token(user_id)
+
+                sub_state["calendar_access_token"] = await self._get_calendar_token(
+                    user_id
+                )
                 response_text, final_state = await _run_sub_agent(
                     task_agent, user_id, user_text, sub_state
                 )
 
             elif route == "music":
                 from agents.music.agent import music_agent
+
                 response_text, final_state = await _run_sub_agent(
                     music_agent, user_id, user_text, sub_state
                 )
@@ -396,7 +402,6 @@ class BEANOrchestrator(BaseAgent):
             )
 
         return response_text, music_command
-
 
     async def _fallback_response(
         self,
@@ -467,9 +472,7 @@ class BEANOrchestrator(BaseAgent):
                 min_similarity=0.72,
             )
             if memories:
-                episodic_str = (
-                    f"Relevant context: {len(memories)} similar past interactions found."
-                )
+                episodic_str = f"Relevant context: {len(memories)} similar past interactions found."
         except Exception as exc:
             logger.debug("Episodic memory search failed (non-critical): %s", exc)
 
@@ -563,7 +566,9 @@ class BEANOrchestrator(BaseAgent):
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.error("Background task %d failed [route=%s]: %s", i, route, result)
+                logger.error(
+                    "Background task %d failed [route=%s]: %s", i, route, result
+                )
 
     async def _background_safety_check(
         self,
