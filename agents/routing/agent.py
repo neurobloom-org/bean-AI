@@ -1,12 +1,19 @@
-"""BEAN AI v5 — Routing Agent.
+"""BEAN AI v1 — Routing Agent.
 
 Intent classifier: reads the current transcript + context from session state,
-calls Gemini Flash (cheap tier) for a JSON routing decision, and writes:
+calls Gemini Flash (cheap tier) for a JSON routing decision, and writes all
+outputs via EventActions(state_delta={...}) — the correct ADK BaseAgent pattern.
 
-    session.state["route"]               → str  (e.g. "casual")
-    session.state["routing_confidence"]  → float
+Outputs written to session state (via state_delta):
+    route                   → str   (e.g. "casual")
+    routing_confidence      → float (0.0–1.0)
+    routing_used_fallback   → bool
+    routing_failure_reason  → str   ("" on success, short code on failure)
+    routing_attempt_count   → int
+    routing_latency_ms      → float
+    routing_alert_suspected → bool
 
-Design constraints (from branch guide):
+Design constraints:
 - Always uses the cheap LLM tier (Flash).
 - Falls back to "casual" on ANY failure — never raises out of _run_async_impl.
 - Empty transcript → default to "casual" without touching the LLM.
@@ -19,11 +26,10 @@ Cancellation contract:
   not Exception, so the broad ``except Exception`` blocks below do not intercept
   it. Cancellation propagates cleanly to the orchestrator/runtime.
 
-asyncio.to_thread + timeout note:
-- asyncio.wait_for cancels the coroutine on timeout, but the underlying OS
-  thread (inside generate_json → asyncio.to_thread) cannot be cancelled by
-  Python — it will complete on its own and its result will be discarded. This
-  is a known Python limitation and is acceptable for a routing hot-path.
+asyncio.wait_for + timeout note:
+- asyncio.wait_for cancels the coroutine on timeout. The underlying Gemini
+  SDK call (which runs natively async via client.aio) will be cancelled too.
+  This is the correct behaviour — no orphaned threads.
 """
 
 from __future__ import annotations
@@ -39,12 +45,11 @@ from typing import Any, Final, TypedDict, cast
 
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
-from google.genai import types as adk_types
+from google.adk.events import Event, EventActions
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# RouteType is the team's canonical enum — defined in shared/enums.py.
-# Do NOT redefine it here; importing it is the only correct approach.
 from shared.enums import RouteType
+from shared.exceptions import LLMError
 from services.llm_service import generate_json
 
 __all__ = ["routing_agent"]
@@ -52,9 +57,7 @@ __all__ = ["routing_agent"]
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+# ── Constants ─────────────────────────────────────────────────────────────────
 
 #: Safe default route for any error or ambiguous path.
 DEFAULT_ROUTE: Final[RouteType] = RouteType.CASUAL
@@ -91,11 +94,10 @@ RETRY_JITTER_SECONDS: Final[float] = 0.02
 DEFAULT_EMOTION: Final[str] = "neutral"
 
 
-# ---------------------------------------------------------------------------
-# Prompts
-# ---------------------------------------------------------------------------
+# ── Prompts ───────────────────────────────────────────────────────────────────
 
-ROUTING_SYSTEM: str = """You are a routing classifier for BEAN, a mental health companion robot.
+ROUTING_SYSTEM: str = """\
+You are a routing classifier for BEAN, a mental health companion robot.
 Classify the user's message into exactly one route.
 
 Routes:
@@ -120,7 +122,8 @@ Respond ONLY with valid JSON:
 {"route": "casual|therapy|task|music|alert", "confidence": 0.0}
 """
 
-ROUTING_PROMPT: str = """Classify the current user message.
+ROUTING_PROMPT: str = """\
+Classify the current user message.
 
 User message:
 {user_text}
@@ -131,31 +134,29 @@ Recent route distribution: {route_distribution}
 """
 
 
-# ---------------------------------------------------------------------------
-# Typed session state (TypedDict as documentation + type-checker aid)
-# ---------------------------------------------------------------------------
+# ── Typed session state ───────────────────────────────────────────────────────
 
 
 class _SessionState(TypedDict, total=False):
     """Known session.state fields the routing agent reads and writes.
 
-    This is not enforced at runtime — it documents the contract so that
-    mypy can catch typos in state key names throughout this file.
+    Inputs are read from ctx.session.state directly.
+    Outputs are written via EventActions(state_delta={...}) — never by direct
+    mutation of session.state. This TypedDict documents the full contract so
+    mypy can catch typos in key names throughout this file.
     """
 
-    # Inputs
+    # Inputs (read from session.state)
     current_transcript: str
     current_emotion: str
     turn_count: int
-    route_distribution: dict[str, int]  # plain strings from session state
+    route_distribution: dict[str, int]
     user_id: str
     session_id: str
 
-    # Outputs — written on every successful run
+    # Outputs (written via state_delta in EventActions)
     route: str
     routing_confidence: float
-
-    # Observability outputs — written on every run for debugging
     routing_used_fallback: bool
     routing_failure_reason: str
     routing_attempt_count: int
@@ -163,9 +164,7 @@ class _SessionState(TypedDict, total=False):
     routing_alert_suspected: bool
 
 
-# ---------------------------------------------------------------------------
-# Logging adapter
-# ---------------------------------------------------------------------------
+# ── Logging adapter ───────────────────────────────────────────────────────────
 
 
 class _SessionLoggerAdapter(logging.LoggerAdapter):
@@ -185,20 +184,17 @@ class _SessionLoggerAdapter(logging.LoggerAdapter):
         return f"{prefix} {msg}", kwargs
 
 
-# ---------------------------------------------------------------------------
-# Internal data models
-# ---------------------------------------------------------------------------
+# ── Internal data models ──────────────────────────────────────────────────────
 
 
 class _LLMResponseModel(BaseModel):
     """Pydantic model that validates the JSON shape returned by the LLM.
 
-    Using Pydantic here (rather than manual checks) means every edge case
-    is handled in validators: unknown routes, booleans passed as confidence,
+    extra="ignore" so unexpected LLM fields like "reasoning" don't raise.
+    Validators handle all edge cases: unknown routes, booleans as confidence,
     None values, out-of-range floats — all resolved deterministically.
     """
 
-    # extra="ignore" so unexpected LLM fields like "reasoning" don't raise.
     model_config = ConfigDict(extra="ignore", use_enum_values=False)
 
     route: RouteType = Field(default=RouteType.CASUAL)
@@ -219,15 +215,13 @@ class _LLMResponseModel(BaseModel):
     @classmethod
     def _validate_confidence(cls, value: Any) -> float:
         # bool is a subclass of int: float(True)==1.0, float(False)==0.0.
-        # A boolean confidence value is almost certainly a parsing error,
-        # so we reject it and return the safe default.
+        # A boolean confidence is almost certainly a parsing error.
         if isinstance(value, bool):
             return DEFAULT_CONFIDENCE
         try:
             parsed = float(value)
         except (TypeError, ValueError):
             return DEFAULT_CONFIDENCE
-        # Clamp to [0.0, 1.0]
         return max(0.0, min(1.0, parsed))
 
 
@@ -235,8 +229,7 @@ class _LLMResponseModel(BaseModel):
 class _RoutingDecision:
     """Immutable routing result.
 
-    Frozen + slots means: once produced it cannot be mutated accidentally,
-    and it's slightly cheaper to create than a plain dict.
+    Frozen + slots: cannot be mutated accidentally, slightly cheaper than dict.
     """
 
     route: RouteType
@@ -248,46 +241,43 @@ class _RoutingDiagnostics:
     """Observability fields written to session state after every run."""
 
     used_fallback: bool
-    failure_reason: str  # "" on success; short code string on failure
+    failure_reason: str   # "" on success; short code string on failure
     attempt_count: int
-    alert_suspected: bool  # True if the LLM proposed "alert" before any downgrade
+    alert_suspected: bool  # True if LLM proposed "alert" before any downgrade
 
 
 @dataclass(frozen=True, slots=True)
 class _SessionInputs:
     """Validated snapshot of session state values needed for routing.
 
-    Reading everything up-front in one place makes the routing logic
-    easy to follow and keeps the classifier independently testable.
+    Reading everything up-front in one place makes the routing logic easy to
+    follow and keeps the classifier independently testable.
     """
 
     user_text: str
     emotion: str
     turn_number: int
-    route_distribution: dict[RouteType, int]  # normalised to RouteType keys
+    route_distribution: dict[RouteType, int]
     user_id: str
     session_id: str
 
 
-# ---------------------------------------------------------------------------
-# Pure helper functions
-# ---------------------------------------------------------------------------
+# ── Pure helper functions ─────────────────────────────────────────────────────
 
 
 def _strict_str(value: Any, fallback: str = "") -> str:
-    """Return *value* only if it is already a ``str``; otherwise *fallback*.
+    """Return value only if it is already a str; otherwise fallback.
 
-    Unlike ``str(value)``, this intentionally does NOT coerce numbers or
-    other types — unexpected types in session state are treated as absent.
+    Unlike str(value), this does NOT coerce numbers or other types —
+    unexpected types in session state are treated as absent.
     """
     return value if isinstance(value, str) else fallback
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
-    """Best-effort ``int`` conversion with safe fallback.
+    """Best-effort int conversion with safe fallback.
 
-    Rejects booleans explicitly because ``bool`` is a subclass of ``int``
-    and ``True``/``False`` as a turn count would be a data error.
+    Rejects booleans explicitly — True/False as a turn count is a data error.
     """
     if isinstance(value, bool):
         return default
@@ -322,12 +312,10 @@ def _normalize_emotion(value: Any) -> str:
 
 
 def _normalize_route_distribution(value: Any) -> dict[RouteType, int]:
-    """Convert the raw session state dict to a typed ``{RouteType: count}`` map.
+    """Convert raw session state dict to a typed {RouteType: count} map.
 
-    - Skips keys that are not valid RouteType values (future-proofs against
-      old sessions that might have stale/renamed route strings).
-    - Clamps counts to [0, MAX_ROUTE_DISTRIBUTION_COUNT] to avoid prompt
-      bloat if a session runs for an unusually long time.
+    - Skips keys that are not valid RouteType values.
+    - Clamps counts to [0, MAX_ROUTE_DISTRIBUTION_COUNT].
     """
     if not isinstance(value, dict):
         return {}
@@ -338,7 +326,7 @@ def _normalize_route_distribution(value: Any) -> dict[RouteType, int]:
         try:
             route = RouteType(raw_key.strip().lower())
         except ValueError:
-            continue  # unknown route key — skip silently
+            continue
         count = _safe_int(raw_count, default=0)
         cleaned[route] = max(0, min(count, MAX_ROUTE_DISTRIBUTION_COUNT))
     return cleaned
@@ -347,8 +335,7 @@ def _normalize_route_distribution(value: Any) -> dict[RouteType, int]:
 def _serialize_route_distribution(distribution: dict[RouteType, int]) -> str:
     """Serialise the route distribution for prompt injection.
 
-    Uses compact separators and sorted keys so the output is deterministic
-    (easier to compare in logs and tests).
+    Sorted keys make the output deterministic (easier to compare in logs/tests).
     """
     if not distribution:
         return "{}"
@@ -361,11 +348,10 @@ def _serialize_route_distribution(distribution: dict[RouteType, int]) -> str:
 
 
 def _read_session_inputs(state: _SessionState) -> _SessionInputs:
-    """Extract and normalise all routing inputs from ``session.state``.
+    """Extract and normalise all routing inputs from session.state.
 
-    This is the single point where raw session state is converted into
-    typed, validated inputs. If this function returns cleanly, the rest
-    of the routing logic can trust its inputs.
+    Single point of conversion from raw session state to typed inputs.
+    If this returns cleanly, the rest of the routing logic can trust its values.
     """
     return _SessionInputs(
         user_text=_strict_str(state.get("current_transcript", "")),
@@ -384,15 +370,13 @@ def _apply_alert_confidence_floor(
 ) -> tuple[_RoutingDecision, bool]:
     """Downgrade a low-confidence "alert" to "therapy".
 
-    Returns a (possibly updated decision, alert_was_downgraded) tuple.
+    Returns (possibly updated decision, downgraded: bool).
 
-    Why this exists:
-    The AlertAgent runs a rule-based 5-factor check on every turn
-    independently of routing. A low-confidence "alert" classification is
-    more likely to be a mis-classification (e.g. dark humour, figurative
-    language) than a genuine crisis. Routing it to "therapy" still gets
-    the user empathetic support, while the AlertAgent's keyword matching
-    (F1/F5) will catch real crises regardless of this decision.
+    Why: The AlertAgent runs a rule-based 5-factor check on every turn
+    independently of routing. A low-confidence "alert" is more likely a
+    mis-classification (dark humour, figurative language) than a real crisis.
+    Routing to "therapy" still gets the user empathetic support; the AlertAgent's
+    keyword matching (F1/F5) catches real crises regardless.
     """
     if (
         decision.route == RouteType.ALERT
@@ -408,7 +392,7 @@ def _apply_alert_confidence_floor(
 def _compute_retry_delay(attempt_index: int) -> float:
     """Exponential backoff with small random jitter.
 
-    With MAX_LLM_RETRIES=1 and base=0.05s, the worst-case penalty is ~0.1s.
+    With MAX_LLM_RETRIES=1 and base=0.05s, worst-case penalty is ~0.1s.
     """
     return RETRY_BASE_DELAY_SECONDS * (2**attempt_index) + random.uniform(
         0.0, RETRY_JITTER_SECONDS
@@ -419,9 +403,42 @@ def _build_fallback_decision() -> _RoutingDecision:
     return _RoutingDecision(route=DEFAULT_ROUTE, confidence=DEFAULT_CONFIDENCE)
 
 
-# ---------------------------------------------------------------------------
-# Agent
-# ---------------------------------------------------------------------------
+def _build_state_delta(
+    *,
+    decision: _RoutingDecision,
+    diagnostics: _RoutingDiagnostics,
+    latency_ms: float,
+) -> dict[str, Any]:
+    """Build the complete state_delta dict for one routing turn.
+
+    All routing outputs are collected here and written atomically via
+    EventActions(state_delta=...) — never via direct session.state mutation.
+    """
+    return {
+        "route": decision.route.value,
+        "routing_confidence": decision.confidence,
+        "routing_used_fallback": diagnostics.used_fallback,
+        "routing_failure_reason": diagnostics.failure_reason,
+        "routing_attempt_count": diagnostics.attempt_count,
+        "routing_latency_ms": latency_ms,
+        "routing_alert_suspected": diagnostics.alert_suspected,
+    }
+
+
+def _build_empty_transcript_delta() -> dict[str, Any]:
+    """State delta for the empty-transcript fast path."""
+    return {
+        "route": DEFAULT_ROUTE.value,
+        "routing_confidence": EMPTY_TRANSCRIPT_CONFIDENCE,
+        "routing_used_fallback": False,
+        "routing_failure_reason": "empty_transcript",
+        "routing_attempt_count": 0,
+        "routing_latency_ms": 0.0,
+        "routing_alert_suspected": False,
+    }
+
+
+# ── Agent ─────────────────────────────────────────────────────────────────────
 
 
 class RoutingAgent(BaseAgent):
@@ -433,21 +450,21 @@ class RoutingAgent(BaseAgent):
         turn_count         (int)  — incremented by orchestrator
         route_distribution (dict) — {route_str: count}, running history
 
-    Session state writes:
-        route                  (str)   — canonical route string, e.g. "casual"
-        routing_confidence     (float) — 0.0–1.0
-        routing_used_fallback  (bool)  — True if LLM failed and default was used
-        routing_failure_reason (str)   — short failure code or "" on success
-        routing_attempt_count  (int)   — number of LLM calls made this turn
-        routing_latency_ms     (float) — wall-clock ms for the classification
-        routing_alert_suspected(bool)  — True if LLM suggested "alert" pre-floor
+    Session state writes (via EventActions state_delta — never direct mutation):
+        route                   (str)   — canonical route string, e.g. "casual"
+        routing_confidence      (float) — 0.0–1.0
+        routing_used_fallback   (bool)  — True if LLM failed and default was used
+        routing_failure_reason  (str)   — short failure code or "" on success
+        routing_attempt_count   (int)   — number of LLM calls made this turn
+        routing_latency_ms      (float) — wall-clock ms for the classification
+        routing_alert_suspected (bool)  — True if LLM suggested "alert" pre-floor
 
-    This agent emits no user-facing content (yields empty Content).
+    This agent emits no user-facing content — it only updates session state.
     """
 
     async def _run_async_impl(
         self, ctx: InvocationContext
-    ) -> AsyncGenerator[adk_types.Content, None]:
+    ) -> AsyncGenerator[Event, None]:
         # cast() is a type-hint only — no runtime effect.
         state = cast(_SessionState, ctx.session.state)
         inputs = _read_session_inputs(state)
@@ -461,38 +478,24 @@ class RoutingAgent(BaseAgent):
             },
         )
 
-        # Initialise all diagnostic keys upfront so state always has a
-        # consistent shape regardless of which code path is taken below.
-        state["routing_used_fallback"] = False
-        state["routing_failure_reason"] = ""
-        state["routing_attempt_count"] = 0
-        state["routing_latency_ms"] = 0.0
-        state["routing_alert_suspected"] = False
-
-        # ── Fast path: empty transcript ──────────────────────────────────────
-        # No LLM call needed — a silent / missed transcription defaults to casual.
+        # ── Fast path: empty transcript ───────────────────────────────────────
+        # No LLM call needed — a silent/missed transcription defaults to casual.
         if not inputs.user_text.strip():
-            state["route"] = DEFAULT_ROUTE.value
-            state["routing_confidence"] = EMPTY_TRANSCRIPT_CONFIDENCE
-            state["routing_failure_reason"] = "empty_transcript"
             log.debug("Empty transcript → default route, no LLM call")
-            yield adk_types.Content(parts=[])
+            yield Event(
+                author=self.name,
+                actions=EventActions(
+                    state_delta=_build_empty_transcript_delta()
+                ),
+            )
             return
 
-        # ── LLM classification with retry ────────────────────────────────────
+        # ── LLM classification with retry ─────────────────────────────────────
         t0 = time.perf_counter()
-        decision, diagnostics = await self._classify_with_retry(inputs=inputs, log=log)
+        decision, diagnostics = await self._classify_with_retry(
+            inputs=inputs, log=log
+        )
         latency_ms = round((time.perf_counter() - t0) * 1000, 1)
-
-        # Write route as a plain string (RouteType.value) so every other agent
-        # can read it without importing RouteType.
-        state["route"] = decision.route.value
-        state["routing_confidence"] = decision.confidence
-        state["routing_used_fallback"] = diagnostics.used_fallback
-        state["routing_failure_reason"] = diagnostics.failure_reason
-        state["routing_attempt_count"] = diagnostics.attempt_count
-        state["routing_latency_ms"] = latency_ms
-        state["routing_alert_suspected"] = diagnostics.alert_suspected
 
         log.info(
             "Routing decision → route=%r confidence=%.2f "
@@ -506,8 +509,17 @@ class RoutingAgent(BaseAgent):
             diagnostics.alert_suspected,
         )
 
-        # This agent writes state only — it never emits a user-facing message.
-        yield adk_types.Content(parts=[])
+        # All outputs go through state_delta — never via direct state mutation.
+        yield Event(
+            author=self.name,
+            actions=EventActions(
+                state_delta=_build_state_delta(
+                    decision=decision,
+                    diagnostics=diagnostics,
+                    latency_ms=latency_ms,
+                )
+            ),
+        )
 
     async def _classify_with_retry(
         self,
@@ -525,7 +537,9 @@ class RoutingAgent(BaseAgent):
             user_text=_sanitize_user_text(inputs.user_text)[:MAX_TRANSCRIPT_CHARS],
             emotion=inputs.emotion,
             turn_number=inputs.turn_number,
-            route_distribution=_serialize_route_distribution(inputs.route_distribution),
+            route_distribution=_serialize_route_distribution(
+                inputs.route_distribution
+            ),
         )
 
         total_attempts = 1 + MAX_LLM_RETRIES
@@ -538,10 +552,6 @@ class RoutingAgent(BaseAgent):
             try:
                 t0_call = time.perf_counter()
 
-                # asyncio.wait_for enforces the wall-clock ceiling.
-                # Note: if timeout fires, the underlying to_thread() call
-                # continues running in the threadpool until the Gemini SDK
-                # returns — its result is simply discarded.
                 result = await asyncio.wait_for(
                     generate_json(
                         task="routing",
@@ -553,15 +563,11 @@ class RoutingAgent(BaseAgent):
 
                 elapsed_ms = round((time.perf_counter() - t0_call) * 1000, 1)
 
-                # generate_json always returns dict or raises — but we
-                # guard anyway so mypy is happy and we catch API drift.
                 if not isinstance(result, dict):
                     raise ValueError(
                         f"generate_json returned {type(result).__name__}, expected dict"
                     )
 
-                # Pydantic handles all edge cases: invalid route strings,
-                # booleans, None, out-of-range floats, extra fields.
                 parsed = _LLMResponseModel.model_validate(result)
 
                 decision = _RoutingDecision(
@@ -569,9 +575,6 @@ class RoutingAgent(BaseAgent):
                     confidence=parsed.confidence,
                 )
 
-                # Track whether the LLM ever suggested "alert" so the
-                # orchestrator can use this for extra logging even after a
-                # downgrade.
                 if parsed.route == RouteType.ALERT:
                     alert_suspected_any = True
 
@@ -610,6 +613,19 @@ class RoutingAgent(BaseAgent):
                     ROUTING_TIMEOUT_SECONDS,
                     attempt_number,
                     total_attempts,
+                )
+
+            except LLMError as exc:
+                # LLMError is now the canonical exception from llm_service.
+                # Caught specifically before the broad Exception to set the
+                # right failure_reason code.
+                last_failure_reason = "llm_error"
+                last_error_str = str(exc)
+                log.warning(
+                    "LLM call raised LLMError (attempt %d/%d): %s",
+                    attempt_number,
+                    total_attempts,
+                    exc,
                 )
 
             except ValueError as exc:
@@ -666,6 +682,6 @@ class RoutingAgent(BaseAgent):
         )
 
 
-# Module-level singleton — consumed by the orchestrator via:
-#   from agents.routing.agent import routing_agent
+# ── Singleton ─────────────────────────────────────────────────────────────────
+
 routing_agent = RoutingAgent(name="routing_agent")
