@@ -303,11 +303,12 @@ async def generate_stream(
 
         # generate_content_stream is an async generator function — calling it
         # returns the async generator directly. Do NOT await it.
-        async for chunk in client.aio.models.generate_content_stream(
+        stream = await client.aio.models.generate_content_stream(
             model=model_name,
             contents=prompt,
             config=config,
-        ):
+        )
+        async for chunk in stream:
             if chunk.text:
                 yield chunk.text
 
