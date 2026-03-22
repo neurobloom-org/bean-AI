@@ -68,29 +68,39 @@ class PrivacyService:
         Text is truncated to max_length to limit PII footprint.
         Returns the inserted record ID.
         """
-        settings = get_settings()
-        expires_at = datetime.now(UTC) + timedelta(
-            hours=settings.transcript_retention_hours
-        )
-
-        # Truncate — limit PII exposure in temporary store
-        stored_text = text[:max_length] if len(text) > max_length else text
-
-        client = await get_service_client()
-        result = (
-            await client.table("session_transcripts")
-            .insert(
-                {
-                    "session_id": session_id,
-                    "user_id": user_id,
-                    "speaker": speaker,
-                    "text": stored_text,
-                    "expires_at": expires_at.isoformat(),
-                }
+        try:
+            settings = get_settings()
+            expires_at = datetime.now(UTC) + timedelta(
+                hours=settings.transcript_retention_hours
             )
-            .execute()
-        )
-        return result.data[0]["id"] if result.data else ""
+
+            # Truncate — limit PII exposure in temporary store
+            stored_text = text[:max_length] if len(text) > max_length else text
+
+            client = await get_service_client()
+            result = (
+                await client.table("session_transcripts")
+                .insert(
+                    {
+                        "session_id": session_id,
+                        "user_id": user_id,
+                        "speaker": speaker,
+                        "text": stored_text,
+                        "expires_at": expires_at.isoformat(),
+                    }
+                )
+                .execute()
+            )
+            return result.data[0]["id"] if result.data else ""
+
+        except Exception as exc:
+            logger.error(
+                "store_transcript_turn failed [session=%s speaker=%s]: %s",
+                session_id,
+                speaker,
+                exc,
+            )
+            return ""
 
     async def get_recent_transcript(
         self,
