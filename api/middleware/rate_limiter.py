@@ -191,11 +191,11 @@ async def check_rate_limit(
 
     except Exception as exc:
         logger.error(
-            "Rate limit check failed for key=%s: %s — failing open",
+            "Rate limit check failed for key=%s: %s — rate limiting request for safety",
             f"{hashed_key[:8]}...",
             exc,
         )
-        return True, 0
+        return False, 0
 
 
 async def clean_expired_rate_limits() -> int:
