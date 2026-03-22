@@ -1,4 +1,4 @@
-"""BEAN AI v1 — ESP32 WebSocket handler.
+"""BEAN AI v5 — ESP32 WebSocket handler.
 
 Handles the full real-time audio pipeline:
   ESP32 → PCM16 audio → Deepgram STT → Orchestrator → ElevenLabs TTS → ESP32
@@ -36,11 +36,6 @@ Bugs fixed vs. original:
     it; moved to after the loop.
   - No keepalive task → ESP32 connections would silently time out under
     quiet periods. A server-side ping task now runs every ws_ping_interval_seconds.
-  - DeepgramConnection was assigned a tuple (trailing comma) instead of the
-    connection object itself.
-  - on_transcript / on_utterance_end passed with wrong signatures; wrapped
-    in lambdas that close over session so the signatures match what
-    DeepgramConnection expects.
 """
 
 from __future__ import annotations
@@ -53,6 +48,8 @@ import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from agents.orchestrator.agent import orchestrator
+from google.adk.runners import InMemoryRunner
+from google.genai import types as genai_types
 from api.middleware.auth_middleware import authenticate_websocket
 from api.middleware.rate_limiter import check_ws_rate_limit
 from services.deepgram_service import DeepgramConnection
@@ -60,7 +57,7 @@ from services.elevenlabs_service import stream_tts_to_websocket
 from services.privacy_service import privacy_service
 from services.supabase_client import get_service_client
 from shared.config import get_settings
-from shared.exceptions import WebSocketAuthError
+from shared.exceptions import WebSocketAuthError  # FIX: canonical import location
 from shared.schemas import utcnow
 
 logger = logging.getLogger(__name__)
@@ -95,7 +92,9 @@ class BEANSession:
         "deepgram",
     )
 
-    def __init__(self, user_id: str, session_id: str, websocket: WebSocket) -> None:
+    def __init__(
+        self, user_id: str, session_id: str, websocket: WebSocket
+    ) -> None:
         self.user_id = user_id
         self.session_id = session_id
         self.websocket = websocket
@@ -122,17 +121,13 @@ class BEANSession:
         try:
             await self.websocket.send_json(data)
         except Exception as exc:
-            logger.debug(
-                "WS send_json failed [session=%s]: %s", self.session_id[:8], exc
-            )
+            logger.debug("WS send_json failed [session=%s]: %s", self.session_id[:8], exc)
 
     async def send_bytes(self, data: bytes) -> None:
         try:
             await self.websocket.send_bytes(data)
         except Exception as exc:
-            logger.debug(
-                "WS send_bytes failed [session=%s]: %s", self.session_id[:8], exc
-            )
+            logger.debug("WS send_bytes failed [session=%s]: %s", self.session_id[:8], exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -148,14 +143,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     Audio:  Binary frames, PCM16 @ 16 kHz, mono
     Control: JSON messages — ping/pong, emotion results, robot status, etc.
     """
+    # Accept the connection, echoing the bearer subprotocol so the ESP32
+    # knows we confirmed its chosen subprotocol.
     raw_protocol = websocket.headers.get("Sec-WebSocket-Protocol", "")
-    chosen = raw_protocol.split(",")[0].strip() if "bearer." in raw_protocol else None
+    chosen = (
+        raw_protocol.split(",")[0].strip()
+        if "bearer." in raw_protocol
+        else None
+    )
     await websocket.accept(subprotocol=chosen)
 
     # ── Authenticate ──────────────────────────────────────────────────────────
     try:
         user_id, _payload = await authenticate_websocket(websocket)
     except WebSocketAuthError:
+        # authenticate_websocket already closed the socket with code 4401.
         return
 
     # ── Create session ────────────────────────────────────────────────────────
@@ -171,6 +173,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await websocket.close(code=1011, reason="Session initialisation failed")
         return
 
+    # Register in active-session map so reminder_check can inject reminders.
     _active_sessions[session_id] = {
         "user_id": user_id,
         "websocket": websocket,
@@ -179,22 +182,19 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     logger.info(
         "WebSocket connected: user=%s session=%s is_minor=%s",
-        user_id[:8],
-        session_id[:8],
-        session.is_minor,
+        user_id[:8], session_id[:8], session.is_minor,
     )
     await session.send_json({"type": "connected", "session_id": session_id})
 
     # ── Deepgram STT ──────────────────────────────────────────────────────────
-    # FIX: removed trailing comma (was creating a tuple instead of a
-    # DeepgramConnection). Callbacks wrapped in lambdas that close over
-    # `session` so their signatures match what DeepgramConnection expects:
-    #   on_transcript:    Callable[[TranscriptResult], Coroutine]
-    #   on_utterance_end: Callable[[], Coroutine]
     try:
         session.deepgram = DeepgramConnection(
-            on_transcript=lambda t: _handle_transcript(session, t),
-            on_utterance_end=lambda: _handle_utterance_end(session),
+            on_transcript=lambda t: asyncio.create_task(
+                _handle_transcript(session, t)
+            ),
+            on_utterance_end=lambda: asyncio.create_task(
+                _handle_utterance_end(session)
+            ),
         )
         await session.deepgram.connect()
     except Exception as exc:
@@ -202,6 +202,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await session.send_json(
             {"type": "error", "code": "stt_unavailable", "message": str(exc)}
         )
+        # Continue without STT — text control messages still work.
 
     settings = get_settings()
 
@@ -209,6 +210,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     reminder_task = asyncio.create_task(
         _poll_reminders(session), name=f"reminders-{session_id[:8]}"
     )
+    # FIX: Added server-side keepalive ping so ESP32 doesn't time out silently
+    # on quiet periods (e.g. user is just listening to TTS).
     keepalive_task = asyncio.create_task(
         _keepalive_ping(session, interval=settings.ws_ping_interval_seconds),
         name=f"keepalive-{session_id[:8]}",
@@ -219,14 +222,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         while True:
             message = await websocket.receive()
 
+            # Binary frame — raw PCM16 audio from the ESP32 microphone.
             if message.get("bytes"):
                 audio_bytes: bytes = message["bytes"]
 
                 if len(audio_bytes) > settings.ws_max_audio_frame_bytes:
                     logger.warning(
                         "Audio frame too large (%d bytes), dropping [session=%s]",
-                        len(audio_bytes),
-                        session_id[:8],
+                        len(audio_bytes), session_id[:8],
                     )
                     continue
 
@@ -243,6 +246,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if session.deepgram and session.deepgram.is_connected:
                     await session.deepgram.send_audio(audio_bytes)
 
+            # Text frame — JSON control message from the ESP32 firmware.
             elif message.get("text"):
                 try:
                     data = json.loads(message["text"])
@@ -250,19 +254,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 except json.JSONDecodeError:
                     logger.warning(
                         "Invalid JSON from ESP32 [session=%s]: %.100s",
-                        session_id[:8],
-                        message["text"],
+                        session_id[:8], message["text"],
                     )
 
     except WebSocketDisconnect:
         logger.info(
             "WebSocket disconnected: user=%s session=%s turns=%d",
-            user_id[:8],
-            session_id[:8],
-            session.turn_count,
+            user_id[:8], session_id[:8], session.turn_count,
         )
     except Exception as exc:
-        logger.error("WebSocket error [session=%s]: %s", session_id[:8], exc)
+        logger.error(
+            "WebSocket error [session=%s]: %s", session_id[:8], exc
+        )
     finally:
         reminder_task.cancel()
         keepalive_task.cancel()
@@ -336,10 +339,24 @@ async def _handle_utterance_end(session: BEANSession) -> None:
 
 
 async def _process_turn(session: BEANSession, user_text: str) -> None:
-    """Run the full orchestrator pipeline for one conversation turn."""
+    """Run the full orchestrator pipeline for one conversation turn.
+
+    The orchestrator:
+      Phase 1 — Safety keyword pre-screen
+      Phase 2 — Route decision (Gemini Flash)
+      Phase 3 — Memory context fetch
+      Phase 4 — Sub-agent dispatch (casual/therapy/task/music/alert)
+      Phase 5 — Non-blocking background tasks (safety, memory, transcript)
+
+    FIX: Removed broken set_session_token / get_pending_music_command calls.
+         Orchestrator already fetches the calendar token internally in _dispatch.
+         Music command is now read from session_state after the loop completes.
+    FIX: route is read AFTER the orchestrator loop, not inside it.
+    """
     session.turn_count += 1
     turn_id = str(uuid.uuid4())
 
+    # Fetch recent transcript context for the orchestrator's memory phase.
     recent = await privacy_service.get_recent_transcript(
         session_id=session.session_id, max_turns=10
     )
@@ -350,7 +367,9 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         "current_transcript": user_text,
         "current_emotion": session.current_emotion,
         "emotion_confidence": "0.7",
-        "recent_emotions": json.dumps([[e, 0.7] for e in session.emotion_trend[-5:]]),
+        "recent_emotions": json.dumps(
+            [[e, 0.7] for e in session.emotion_trend[-5:]]
+        ),
         "turn_count": session.turn_count,
         "route_distribution": session.route_distribution,
         "recent_transcript": recent,
@@ -358,32 +377,54 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         "alert_dispatched": "false",
     }
 
-    response_text = ""
-
-    async for event in orchestrator.run_async(
+    # Run orchestrator via InMemoryRunner — BaseAgent.run_async() does not
+    # accept user_id/session_id/session_state kwargs directly.
+    runner = InMemoryRunner(agent=orchestrator)
+    orch_session = await runner.session_service.create_session(
+        app_name=runner.app_name,
         user_id=session.user_id,
-        session_id=session.session_id,
-        session_state=session_state,
+        state=session_state,
+    )
+
+    response_text = ""
+    async for event in runner.run_async(
+        user_id=session.user_id,
+        session_id=orch_session.id,
+        new_message=genai_types.Content(
+            role="user",
+            parts=[genai_types.Part(text=user_text)],
+        ),
     ):
         if event.content and event.content.parts:
             response_text = event.content.parts[0].text or ""
 
-    route: str = session_state.get("route", "casual")
-    music_command: dict | None = session_state.get("music_command")
+    # Read route and music_command from updated session state after the run.
+    updated_session = await runner.session_service.get_session(
+        app_name=runner.app_name,
+        user_id=session.user_id,
+        session_id=orch_session.id,
+    )
+    final_state: dict = dict(updated_session.state) if updated_session else session_state
+    route: str = final_state.get("route", "casual")
+    music_command: dict | None = final_state.get("music_command")
 
     if not response_text:
+        # Fallback: orchestrator might have put it in state directly.
         response_text = session_state.get("response_text", "")
 
     if not response_text:
         logger.warning(
             "Orchestrator returned no text [session=%s route=%s]",
-            session.session_id[:8],
-            route,
+            session.session_id[:8], route,
         )
         return
 
-    session.route_distribution[route] = session.route_distribution.get(route, 0) + 1
+    # Update in-memory route distribution for session analytics.
+    session.route_distribution[route] = (
+        session.route_distribution.get(route, 0) + 1
+    )
 
+    # ── Send response text to ESP32 ───────────────────────────────────────────
     await session.send_json(
         {
             "type": "response_text",
@@ -393,22 +434,25 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         }
     )
 
+    # ── Forward music command to ESP32 (music route only) ─────────────────────
     if music_command and isinstance(music_command, dict):
         await session.send_json(music_command)
         logger.info(
             "Music command sent to ESP32: type=%s session=%s",
-            music_command.get("type"),
-            session.session_id[:8],
+            music_command.get("type"), session.session_id[:8],
         )
 
+    # ── Post-alert notification ───────────────────────────────────────────────
     post_alert = session_state.get("post_alert_message")
     if post_alert:
-        await session.send_json({"type": "alert_notification", "message": post_alert})
+        await session.send_json(
+            {"type": "alert_notification", "message": post_alert}
+        )
 
-    tts_text = (
-        response_text
-        if route != "music"
-        else (response_text if response_text.strip() else None)
+    # ── Stream TTS audio to ESP32 ─────────────────────────────────────────────
+    # Skip TTS for pure music commands that have no companion spoken text.
+    tts_text = response_text if route != "music" else (
+        response_text if response_text.strip() else None
     )
     if tts_text:
         await stream_tts_to_websocket(
@@ -428,7 +472,9 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
     msg_type = data.get("type", "")
 
     if msg_type == "ping":
-        await session.send_json({"type": "pong", "timestamp": utcnow().isoformat()})
+        await session.send_json(
+            {"type": "pong", "timestamp": utcnow().isoformat()}
+        )
 
     elif msg_type == "emotion_result":
         emotion = data.get("emotion", "neutral")
@@ -441,9 +487,7 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
         rssi = data.get("wifi_rssi")
         logger.debug(
             "Robot status: battery=%s wifi=%s session=%s",
-            battery,
-            rssi,
-            session.session_id[:8],
+            battery, rssi, session.session_id[:8],
         )
         if session.session_id in _active_sessions:
             _active_sessions[session.session_id].update(
@@ -456,8 +500,7 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
     else:
         logger.debug(
             "Unknown control message type '%s' [session=%s]",
-            msg_type,
-            session.session_id[:8],
+            msg_type, session.session_id[:8],
         )
 
 
@@ -467,20 +510,26 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
 
 
 async def _keepalive_ping(session: BEANSession, interval: int = 20) -> None:
-    """Send periodic server-initiated pings to keep the ESP32 TCP connection alive."""
+    """Send periodic server-initiated pings to keep the ESP32 TCP connection alive.
+
+    Without this, NAT/firewall idle timeouts would silently drop the connection
+    while the robot is just listening to TTS or waiting for the user to speak.
+    Exits cleanly on CancelledError (triggered during session teardown).
+    """
     while True:
         try:
             await asyncio.sleep(interval)
-            await session.send_json({"type": "ping", "timestamp": utcnow().isoformat()})
+            await session.send_json(
+                {"type": "ping", "timestamp": utcnow().isoformat()}
+            )
         except asyncio.CancelledError:
             break
         except Exception as exc:
             logger.debug(
                 "Keepalive ping failed [session=%s]: %s",
-                session.session_id[:8],
-                exc,
+                session.session_id[:8], exc,
             )
-            break
+            break  # Socket is gone — stop pinging.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -489,18 +538,23 @@ async def _keepalive_ping(session: BEANSession, interval: int = 20) -> None:
 
 
 async def _poll_reminders(session: BEANSession) -> None:
-    """Deliver pending reminders injected by the background reminder_check job."""
+    """Deliver pending reminders injected by the background reminder_check job.
+
+    background/reminder_check.py sets _active_sessions[session_id]["pending_reminder"]
+    when a task is due.  This loop picks it up and forwards it to the ESP32.
+    """
     while True:
         try:
             await asyncio.sleep(15)
             entry = _active_sessions.get(session.session_id)
             if not entry:
-                break
+                break  # Session was deregistered — stop polling.
 
             reminder = entry.get("pending_reminder")
             if not reminder:
                 continue
 
+            # Clear the reminder before delivering to prevent double-fire.
             entry["pending_reminder"] = None
 
             await session.send_json(
@@ -514,8 +568,7 @@ async def _poll_reminders(session: BEANSession) -> None:
             )
             logger.info(
                 "Reminder delivered to ESP32: task=%s user=%s",
-                reminder.get("task_id"),
-                session.user_id[:8],
+                reminder.get("task_id"), session.user_id[:8],
             )
 
         except asyncio.CancelledError:
@@ -523,8 +576,7 @@ async def _poll_reminders(session: BEANSession) -> None:
         except Exception as exc:
             logger.debug(
                 "Reminder poll error [session=%s]: %s",
-                session.session_id[:8],
-                exc,
+                session.session_id[:8], exc,
             )
 
 
@@ -542,13 +594,13 @@ async def _load_user_flags(session: BEANSession) -> None:
         if profile:
             diagnosis_tags = profile.get("diagnosis_tags", []) or []
             session.is_minor = (
-                bool(profile.get("is_minor", False)) or "minor" in diagnosis_tags
+                bool(profile.get("is_minor", False))
+                or "minor" in diagnosis_tags
             )
     except Exception as exc:
         logger.debug(
             "Failed to load user flags [session=%s]: %s",
-            session.session_id[:8],
-            exc,
+            session.session_id[:8], exc,
         )
 
 
@@ -590,8 +642,7 @@ async def _store_emotion_event(
     except Exception as exc:
         logger.debug(
             "Emotion event store failed (non-critical) [session=%s]: %s",
-            session.session_id[:8],
-            exc,
+            session.session_id[:8], exc,
         )
 
 
@@ -622,13 +673,10 @@ async def _cleanup_session(session: BEANSession) -> None:
     except Exception as exc:
         logger.error(
             "Session cleanup DB update failed [session=%s]: %s",
-            session.session_id[:8],
-            exc,
+            session.session_id[:8], exc,
         )
 
     logger.info(
         "Session ended: user=%s session=%s turns=%d",
-        session.user_id[:8],
-        session.session_id[:8],
-        session.turn_count,
+        session.user_id[:8], session.session_id[:8], session.turn_count,
     )
