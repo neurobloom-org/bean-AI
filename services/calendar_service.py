@@ -69,7 +69,7 @@ async def _refresh_google_token(user_id: str, refresh_token: str) -> str | None:
     try:
         import httpx
 
-        async with httpx.AsyncClient() as http:
+        async with httpx.AsyncClient(timeout=10.0) as http:
             response = await http.post(
                 "https://oauth2.googleapis.com/token",
                 data={
@@ -82,7 +82,12 @@ async def _refresh_google_token(user_id: str, refresh_token: str) -> str | None:
             response.raise_for_status()
             token_data = response.json()
 
-        new_access_token = token_data["access_token"]
+        new_access_token = token_data.get("access_token")
+        if not new_access_token:
+            error = token_data.get("error", "unknown")
+            logger.error("Google token refresh failed for user %s: %s", user_id, error)
+            return None
+
         expires_in = token_data.get("expires_in", 3600)
         expires_at = (datetime.now(UTC) + timedelta(seconds=expires_in)).isoformat()
 
@@ -121,7 +126,7 @@ class CalendarService:
         """Find the 'BEAN Reminders' calendar or create it."""
         import httpx
 
-        async with httpx.AsyncClient() as http:
+        async with httpx.AsyncClient(timeout=10.0) as http:
             # List user's calendars
             response = await http.get(
                 f"{self.CALENDAR_API}/users/me/calendarList",
@@ -173,7 +178,7 @@ class CalendarService:
             },
         }
 
-        async with httpx.AsyncClient() as http:
+        async with httpx.AsyncClient(timeout=10.0) as http:
             response = await http.post(
                 f"{self.CALENDAR_API}/calendars/{calendar_id}/events",
                 headers=self._headers,
@@ -191,7 +196,7 @@ class CalendarService:
         import httpx
 
         now = datetime.now(UTC).isoformat()
-        async with httpx.AsyncClient() as http:
+        async with httpx.AsyncClient(timeout=10.0) as http:
             response = await http.get(
                 f"{self.CALENDAR_API}/calendars/{calendar_id}/events",
                 headers=self._headers,
@@ -209,7 +214,7 @@ class CalendarService:
         """Delete a calendar event."""
         import httpx
 
-        async with httpx.AsyncClient() as http:
+        async with httpx.AsyncClient(timeout=10.0) as http:
             response = await http.delete(
                 f"{self.CALENDAR_API}/calendars/{calendar_id}/events/{event_id}",
                 headers=self._headers,
