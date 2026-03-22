@@ -3,12 +3,25 @@
 ElevenLabs-backed TTS utility layer for BEAN AI.
 
 This module is not an LLM agent. It provides:
-- a FunctionTool wrapper for full-response TTS
-- a direct async generator for streaming TTS chunks to the orchestrator
-- Supabase-backed cache helpers
+  - synthesize_speech()         Full-response TTS, Supabase-cached, returned as base64.
+                                Wrapped as an ADK FunctionTool for tool-based flows.
+  - stream_tts_chunks()         True streaming TTS for low-latency robot playback.
+                                The orchestrator calls this and forwards chunks to the WS.
+  - get_cached_tts()            Direct cache read for pre-warmed filler audio.
+  - get_cached_filler_audio()   Alias for get_cached_tts() (semantic clarity).
+  - save_tts_cache()            Persist audio to the Supabase tts_cache table.
 
-The orchestrator should use `stream_tts_chunks()` for real-time robot playback.
-The ADK tool `synthesize_speech_tool` is intended for simpler full-audio use cases.
+Voice ID resolution (same rule everywhere):
+    Explicit voice_id argument → settings.elevenlabs_voice_id → ElevenLabsError.
+
+Cache schema (tts_cache table):
+    cache_key  TEXT  UNIQUE   SHA-256 of "v1:<voice_id>:<text>"
+    phrase     TEXT           The source text (for human inspection only)
+    voice_id   TEXT           The voice used to generate this audio
+    audio_b64  TEXT           Base64-encoded raw audio bytes
+    expires_at TIMESTAMPTZ    7-day TTL set by the DB default
+
+Note: The cache column is named "phrase", not "text". Do not rename it here.
 """
 
 from __future__ import annotations
@@ -16,70 +29,63 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
-import inspect
 import logging
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any
+from typing import Any, Final
 
 from google.adk.tools import FunctionTool
 
 from services.elevenlabs_service import synthesize_speech_full, synthesize_speech_stream
 from services.supabase_client import get_service_client
 from shared.config import get_settings
+from shared.exceptions import ElevenLabsError
 from shared.schemas import TTSChunk
+
+__all__ = [
+    "synthesize_speech",
+    "stream_tts_chunks",
+    "get_cached_tts",
+    "get_cached_filler_audio",
+    "save_tts_cache",
+    "synthesize_speech_tool",
+]
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Tuning constants
-# ---------------------------------------------------------------------------
+# ── Tuning constants ──────────────────────────────────────────────────────────
 
-_CACHE_TIMEOUT_SECONDS = 5.0
-_FULL_TTS_TIMEOUT_SECONDS = 20.0
-_STREAM_FIRST_CHUNK_TIMEOUT_SECONDS = 10.0
-_MAX_TEXT_LENGTH = 10_000
-_CACHE_KEY_VERSION = "v1"
+_CACHE_TIMEOUT_SECONDS: Final[float] = 5.0
+_FULL_TTS_TIMEOUT_SECONDS: Final[float] = 20.0
+_MAX_TEXT_LENGTH: Final[int] = 10_000
+_CACHE_KEY_VERSION: Final[str] = "v1"
 
-# Keep strong refs to fire-and-forget tasks until they finish.
+# Strong references to fire-and-forget cache-save tasks.
+# Without this, the GC can collect a task before it finishes.
 _BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
-# Reserved keys for in-flight background cache saves.
+# Keys for cache saves that are currently in flight.
+# Prevents duplicate concurrent saves for the same cache key.
 _RESERVED_CACHE_SAVE_KEYS: set[str] = set()
 
-# ---------------------------------------------------------------------------
-# Service capability detection — evaluate once at module load
-# ---------------------------------------------------------------------------
 
-try:
-    _FULL_SUPPORTS_VOICE_ID = (
-        "voice_id" in inspect.signature(synthesize_speech_full).parameters
-    )
-except (TypeError, ValueError):
-    _FULL_SUPPORTS_VOICE_ID = False
-
-try:
-    _STREAM_SUPPORTS_VOICE_ID = (
-        "voice_id" in inspect.signature(synthesize_speech_stream).parameters
-    )
-except (TypeError, ValueError):
-    _STREAM_SUPPORTS_VOICE_ID = False
-
-
-# ---------------------------------------------------------------------------
-# Validation and normalization helpers
-# ---------------------------------------------------------------------------
+# ── Validation helpers ────────────────────────────────────────────────────────
 
 
 def _sanitize_for_log(value: str, max_length: int = 120) -> str:
-    """Return a shortened log-safe representation."""
+    """Return a shortened log-safe representation of a string."""
     if len(value) <= max_length:
         return value
     return f"{value[:max_length]}…"
 
 
 def _normalize_text(text: Any) -> str:
-    """Normalize and validate TTS input text."""
+    """Normalize and validate TTS input text.
+
+    Raises:
+        TypeError:  If text is not a string.
+        ValueError: If text is empty or exceeds _MAX_TEXT_LENGTH.
+    """
     if not isinstance(text, str):
         raise TypeError(
             f"Text for TTS must be a string, got {type(text).__name__} instead."
@@ -91,59 +97,67 @@ def _normalize_text(text: Any) -> str:
 
     if len(normalized) > _MAX_TEXT_LENGTH:
         raise ValueError(
-            f"Text for TTS exceeds maximum length of {_MAX_TEXT_LENGTH} characters."
+            f"Text for TTS exceeds maximum length of {_MAX_TEXT_LENGTH} characters "
+            f"(got {len(normalized)})."
         )
 
     return normalized
 
 
-def _normalize_voice_id(value: Any) -> str | None:
-    """Normalize a voice ID value if possible."""
-    if value is None:
-        return None
-
-    if not isinstance(value, str):
-        raise TypeError(
-            f"voice_id must be a string when provided, got {type(value).__name__}."
-        )
-
-    normalized = value.strip()
-    return normalized or None
-
-
 def _resolve_voice_id(voice_id: str | None) -> str:
-    """Resolve the effective ElevenLabs voice ID."""
-    explicit_voice_id = _normalize_voice_id(voice_id)
-    if explicit_voice_id:
-        return explicit_voice_id
+    """Return the effective ElevenLabs voice ID.
+
+    Priority:
+        1. voice_id argument (if non-empty after stripping)
+        2. settings.elevenlabs_voice_id
+
+    Raises:
+        ElevenLabsError: If neither source provides a usable voice ID.
+        TypeError:       If voice_id is provided but is not a string.
+    """
+    if voice_id is not None:
+        if not isinstance(voice_id, str):
+            raise TypeError(
+                f"voice_id must be a string when provided, "
+                f"got {type(voice_id).__name__}."
+            )
+        stripped = voice_id.strip()
+        if stripped:
+            return stripped
 
     settings = get_settings()
-    settings_voice_id = _normalize_voice_id(
-        getattr(settings, "elevenlabs_voice_id", None)
+    configured = getattr(settings, "elevenlabs_voice_id", None)
+
+    if isinstance(configured, str) and configured.strip():
+        return configured.strip()
+
+    raise ElevenLabsError(
+        "No ElevenLabs voice ID available. Provide voice_id explicitly "
+        "or set ELEVENLABS_VOICE_ID in your environment."
     )
-
-    if not settings_voice_id:
-        raise ValueError(
-            "No ElevenLabs voice ID configured. Provide voice_id explicitly "
-            "or set settings.elevenlabs_voice_id."
-        )
-
-    return settings_voice_id
 
 
 def _build_tts_cache_key(text: str, voice_id: str) -> str:
-    """Build a deterministic cache key for TTS output."""
+    """Build a deterministic SHA-256 cache key for TTS output.
+
+    Different voices for the same text produce different keys.
+    """
     payload = f"{_CACHE_KEY_VERSION}:{voice_id}:{text}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
 def _is_plausible_base64_string(value: Any) -> bool:
-    """Cheap validation for cached base64 payloads."""
+    """Return True if value looks like a non-empty base64 string."""
     return isinstance(value, str) and bool(value.strip())
 
 
 def _validate_audio_bytes(value: Any) -> bytes:
-    """Validate a full-audio TTS response."""
+    """Validate a full-audio TTS response payload.
+
+    Raises:
+        TypeError:  If value is not bytes-like.
+        ValueError: If value is empty.
+    """
     if not isinstance(value, (bytes, bytearray)):
         raise TypeError(
             "synthesize_speech_full() must return raw audio bytes, "
@@ -158,21 +172,31 @@ def _validate_audio_bytes(value: Any) -> bytes:
 
 
 def _validate_tts_chunk(chunk: Any) -> TTSChunk:
-    """Validate a streamed TTS chunk."""
+    """Validate a TTSChunk yielded by synthesize_speech_stream().
+
+    Raises:
+        TypeError:  If chunk is not a TTSChunk, or audio_chunk is not bytes.
+        ValueError: If a non-final chunk has empty audio_chunk bytes.
+    """
     if not isinstance(chunk, TTSChunk):
         raise TypeError(
             "synthesize_speech_stream() must yield TTSChunk instances, "
             f"got {type(chunk).__name__} instead."
         )
 
-    audio_chunk = getattr(chunk, "audio_chunk", None)
-    is_final = bool(getattr(chunk, "is_final", False))
+    audio_chunk = chunk.audio_chunk
+    is_final = chunk.is_final
 
-    if audio_chunk is not None and not isinstance(audio_chunk, bytes):
-        raise TypeError("TTSChunk.audio_chunk must be bytes when present.")
+    if not isinstance(audio_chunk, bytes):
+        raise TypeError(
+            f"TTSChunk.audio_chunk must be bytes, got {type(audio_chunk).__name__}."
+        )
 
-    if not is_final and audio_chunk is not None and not audio_chunk:
-        raise ValueError("TTSChunk.audio_chunk cannot be empty for non-final chunks.")
+    # Final chunks may have empty audio (sentinel signal). Non-final must not.
+    if not is_final and not audio_chunk:
+        raise ValueError(
+            "TTSChunk.audio_chunk cannot be empty for non-final chunks."
+        )
 
     return chunk
 
@@ -187,7 +211,7 @@ def _build_success_response(
     cache_key: str,
     audio_length_bytes: int | None,
 ) -> dict[str, Any]:
-    """Build a consistent success response payload."""
+    """Build the standard success response dict for synthesize_speech()."""
     return {
         "status": "ok",
         "audio_b64": audio_b64,
@@ -201,7 +225,7 @@ def _build_success_response(
 
 
 def _build_error_response(exc: Exception) -> dict[str, Any]:
-    """Build a consistent error response payload."""
+    """Build the standard error response dict for synthesize_speech()."""
     return {
         "status": "error",
         "error": str(exc),
@@ -209,27 +233,31 @@ def _build_error_response(exc: Exception) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# Background task helpers
-# ---------------------------------------------------------------------------
+# ── Background task helpers ───────────────────────────────────────────────────
 
 
 def _track_background_task(task: asyncio.Task[Any]) -> None:
-    """Track a background task until completion."""
+    """Hold a strong reference to a background task until it completes."""
     _BACKGROUND_TASKS.add(task)
 
-    def _cleanup(done_task: asyncio.Task[Any]) -> None:
+    def _on_done(done_task: asyncio.Task[Any]) -> None:
         _BACKGROUND_TASKS.discard(done_task)
         try:
             exc = done_task.exception()
         except asyncio.CancelledError:
-            logger.debug("Background TTS task was cancelled.")
+            logger.debug("Background TTS cache-save task cancelled.")
             return
 
         if exc is not None:
-            logger.exception("Background TTS task failed: %s", exc)
+            # exc_info=exc attaches the stored traceback — logger.exception()
+            # would not work here because we are outside an exception handler.
+            logger.error(
+                "Background TTS cache-save task failed: %s",
+                exc,
+                exc_info=exc,
+            )
 
-    task.add_done_callback(_cleanup)
+    task.add_done_callback(_on_done)
 
 
 def _schedule_background_cache_save(
@@ -239,9 +267,16 @@ def _schedule_background_cache_save(
     text: str,
     voice_id: str,
 ) -> None:
-    """Schedule cache persistence without blocking the TTS response path."""
+    """Schedule a cache write without blocking the TTS response path.
+
+    Skips silently if a save is already in flight for this cache_key to
+    avoid duplicate concurrent writes to the same row.
+    """
     if cache_key in _RESERVED_CACHE_SAVE_KEYS:
-        logger.debug("Skipping duplicate pending cache save for key=%s", cache_key)
+        logger.debug(
+            "TTS cache: skipping duplicate in-flight save for key=%s…",
+            cache_key[:12],
+        )
         return
 
     _RESERVED_CACHE_SAVE_KEYS.add(cache_key)
@@ -258,38 +293,39 @@ def _schedule_background_cache_save(
             _RESERVED_CACHE_SAVE_KEYS.discard(cache_key)
 
     try:
-        task = asyncio.create_task(_runner())
+        task = asyncio.create_task(_runner(), name=f"tts-cache-save-{cache_key[:8]}")
     except RuntimeError:
         _RESERVED_CACHE_SAVE_KEYS.discard(cache_key)
         logger.warning(
-            "No running event loop; skipping background TTS cache save for key=%s",
-            cache_key,
+            "TTS cache: no running event loop — skipping cache save for key=%s…",
+            cache_key[:12],
         )
         return
     except Exception:
         _RESERVED_CACHE_SAVE_KEYS.discard(cache_key)
         logger.exception(
-            "Failed to schedule background TTS cache save for key=%s",
-            cache_key,
+            "TTS cache: failed to schedule cache save for key=%s…",
+            cache_key[:12],
         )
         return
 
     _track_background_task(task)
 
 
-# ---------------------------------------------------------------------------
-# Cache helpers
-# ---------------------------------------------------------------------------
+# ── Supabase cache helpers ────────────────────────────────────────────────────
 
 
 async def get_cached_tts(cache_key: str) -> str | None:
-    """Return base64-encoded audio from the Supabase TTS cache."""
+    """Return base64-encoded audio from the Supabase tts_cache table.
+
+    Returns None on cache miss, timeout, or any DB error.
+    Never raises — cache misses must not break TTS.
+    """
     if not isinstance(cache_key, str) or not cache_key.strip():
         return None
 
     try:
         client = await get_service_client()
-        # AFTER — proper fix
         result = await asyncio.wait_for(
             client.table("tts_cache")
             .select("audio_b64")
@@ -307,20 +343,29 @@ async def get_cached_tts(cache_key: str) -> str | None:
             return None
 
         audio_b64 = data.get("audio_b64")
-
-        # isinstance check lets mypy narrow the type to str — no cast needed
         if not isinstance(audio_b64, str) or not audio_b64.strip():
             logger.warning(
-                "Ignoring invalid cached audio payload for key=%s", cache_key
+                "TTS cache: invalid cached audio payload for key=%s…",
+                cache_key[:12],
             )
             return None
 
-        return audio_b64  # mypy now knows this is str, not Any
+        return audio_b64
+
     except asyncio.TimeoutError:
-        logger.warning("TTS cache lookup timed out for key=%s", cache_key)
+        logger.warning(
+            "TTS cache: lookup timed out after %.1fs for key=%s…",
+            _CACHE_TIMEOUT_SECONDS,
+            cache_key[:12],
+        )
         return None
+
     except Exception as exc:
-        logger.warning("TTS cache lookup failed for key=%s: %s", cache_key, exc)
+        logger.warning(
+            "TTS cache: lookup failed for key=%s…: %s",
+            cache_key[:12],
+            exc,
+        )
         return None
 
 
@@ -331,42 +376,62 @@ async def save_tts_cache(
     text: str,
     voice_id: str,
 ) -> None:
-    """Persist synthesized audio to the Supabase TTS cache.
+    """Persist synthesized audio to the Supabase tts_cache table.
 
-    This function is best-effort only. Cache write failures must never break TTS.
+    Best-effort: failures are logged but never re-raised.
+    The cache column for source text is named "phrase" (not "text") —
+    this matches the 001_schema.sql definition exactly.
     """
     if not cache_key or not _is_plausible_base64_string(audio_b64):
-        logger.warning("Skipping TTS cache save due to invalid payload.")
+        logger.warning("TTS cache: skipping save — invalid cache_key or audio_b64.")
         return
 
     try:
         client = await get_service_client()
-        payload = {
-            "cache_key": cache_key,
-            "audio_b64": audio_b64,
-            "text": text,
-            "voice_id": voice_id,
-        }
-
         await asyncio.wait_for(
-            client.table("tts_cache").upsert(payload).execute(),
+            client.table("tts_cache")
+            .upsert(
+                {
+                    "cache_key": cache_key,
+                    "phrase": text,        # column is "phrase" per 001_schema.sql
+                    "voice_id": voice_id,
+                    "audio_b64": audio_b64,
+                },
+                on_conflict="cache_key",
+            )
+            .execute(),
             timeout=_CACHE_TIMEOUT_SECONDS,
+        )
+        logger.debug(
+            "TTS cache: saved key=%s… voice=%s",
+            cache_key[:12],
+            voice_id[:8],
         )
 
     except asyncio.TimeoutError:
-        logger.warning("TTS cache save timed out for key=%s", cache_key)
+        logger.warning(
+            "TTS cache: save timed out after %.1fs for key=%s…",
+            _CACHE_TIMEOUT_SECONDS,
+            cache_key[:12],
+        )
+
     except Exception as exc:
-        logger.warning("TTS cache save failed for key=%s: %s", cache_key, exc)
+        logger.warning(
+            "TTS cache: save failed for key=%s…: %s",
+            cache_key[:12],
+            exc,
+        )
 
 
 async def get_cached_filler_audio(cache_key: str) -> str | None:
-    """Return pre-cached filler phrase audio from the Supabase TTS cache."""
+    """Return pre-cached filler phrase audio from the Supabase tts_cache table.
+
+    Semantic alias for get_cached_tts() — makes call sites more readable.
+    """
     return await get_cached_tts(cache_key)
 
 
-# ---------------------------------------------------------------------------
-# ElevenLabs full-audio helpers
-# ---------------------------------------------------------------------------
+# ── Full-audio path ───────────────────────────────────────────────────────────
 
 
 async def _call_synthesize_speech_full(
@@ -375,40 +440,40 @@ async def _call_synthesize_speech_full(
     turn_id: str,
     voice_id: str,
 ) -> bytes:
-    """Call full-audio TTS service with compatibility handling."""
-    kwargs: dict[str, Any] = {"turn_id": turn_id}
-
-    if _FULL_SUPPORTS_VOICE_ID:
-        kwargs["voice_id"] = voice_id
-
+    """Call the ElevenLabs full-audio service and validate the result."""
     try:
         raw_audio = await asyncio.wait_for(
-            synthesize_speech_full(text, **kwargs),
+            synthesize_speech_full(text, turn_id=turn_id, voice_id=voice_id),
             timeout=_FULL_TTS_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError as exc:
-        raise TimeoutError("Full-audio TTS request timed out.") from exc
+        raise TimeoutError(
+            f"Full-audio TTS request timed out after {_FULL_TTS_TIMEOUT_SECONDS}s."
+        ) from exc
 
     return _validate_audio_bytes(raw_audio)
-
-
-# ---------------------------------------------------------------------------
-# Public full-audio API
-# ---------------------------------------------------------------------------
 
 
 async def synthesize_speech(
     text: str,
     voice_id: str | None = None,
 ) -> dict[str, Any]:
-    """Synthesize full speech audio from text.
+    """Synthesize full speech audio from text and return it as base64.
 
-    This returns the complete audio as base64 for simpler tool-based use cases.
-    For low-latency robot playback, use `stream_tts_chunks()` instead.
+    Checks the Supabase tts_cache before calling ElevenLabs. On a cache
+    miss, schedules a background write so future calls return instantly.
 
-    Cache behavior:
-    - checks Supabase cache before calling ElevenLabs
-    - schedules generated audio to be written back after a miss
+    For low-latency robot playback, use stream_tts_chunks() instead —
+    this function waits for the complete audio before returning.
+
+    Args:
+        text:     Text to synthesize.
+        voice_id: ElevenLabs voice ID override. Falls back to settings.
+
+    Returns:
+        Dict with keys: status, audio_b64, audio_length_bytes, voice_id,
+        text_length, turn_id, cache_hit, cache_key.
+        On error: {status: "error", error: str, error_type: str}.
     """
     turn_id = str(uuid.uuid4())
 
@@ -419,6 +484,9 @@ async def synthesize_speech(
 
         cached_audio_b64 = await get_cached_tts(cache_key)
         if cached_audio_b64 is not None:
+            logger.debug(
+                "TTS cache HIT turn=%s key=%s…", turn_id[:8], cache_key[:12]
+            )
             return _build_success_response(
                 audio_b64=cached_audio_b64,
                 voice_id=effective_voice_id,
@@ -458,39 +526,7 @@ async def synthesize_speech(
         return _build_error_response(exc)
 
 
-# ---------------------------------------------------------------------------
-# ElevenLabs streaming helpers
-# ---------------------------------------------------------------------------
-
-
-def _build_stream_kwargs(*, turn_id: str, voice_id: str) -> dict[str, Any]:
-    """Build kwargs for streaming service invocation."""
-    kwargs: dict[str, Any] = {"turn_id": turn_id}
-    if _STREAM_SUPPORTS_VOICE_ID:
-        kwargs["voice_id"] = voice_id
-    return kwargs
-
-
-async def _open_stream_iterator(
-    *,
-    text: str,
-    turn_id: str,
-    voice_id: str,
-) -> AsyncIterator[TTSChunk]:
-    """Create and validate the upstream stream iterator."""
-    stream_obj = synthesize_speech_stream(
-        text,
-        **_build_stream_kwargs(turn_id=turn_id, voice_id=voice_id),
-    )
-
-    try:
-        iterator = aiter(stream_obj)
-    except TypeError as exc:
-        raise TypeError(
-            "synthesize_speech_stream() must return an async iterable."
-        ) from exc
-
-    return iterator
+# ── Streaming path ────────────────────────────────────────────────────────────
 
 
 async def _iterate_synthesize_speech_stream(
@@ -499,38 +535,29 @@ async def _iterate_synthesize_speech_stream(
     turn_id: str,
     voice_id: str,
 ) -> AsyncGenerator[TTSChunk, None]:
-    """Stream TTS chunks with compatibility handling and validation.
+    """Iterate the ElevenLabs stream and validate each TTSChunk.
 
-    Applies a timeout only to the first chunk so the robot does not wait
-    indefinitely for TTS startup.
+    Applies a tight timeout to the first chunk (startup latency) and a
+    per-chunk timeout to subsequent chunks (stall detection). Both timeouts
+    are enforced inside synthesize_speech_stream() in the service layer.
     """
-    iterator = await _open_stream_iterator(
-        text=text,
+    stream_obj = synthesize_speech_stream(
+        text,
         turn_id=turn_id,
         voice_id=voice_id,
     )
 
+    # synthesize_speech_stream is an async generator function.
+    # We need to call it to get the async generator, then iterate.
     try:
-        first_chunk = await asyncio.wait_for(
-            anext(iterator),
-            timeout=_STREAM_FIRST_CHUNK_TIMEOUT_SECONDS,
-        )
-    except StopAsyncIteration:
-        raise ValueError("synthesize_speech_stream() yielded no chunks.") from None
-    except asyncio.TimeoutError as exc:
-        raise TimeoutError(
-            "Streaming TTS did not produce the first chunk in time."
+        iterator: AsyncIterator[TTSChunk] = stream_obj.__aiter__()
+    except AttributeError as exc:
+        raise TypeError(
+            "synthesize_speech_stream() must return an async iterable."
         ) from exc
-
-    yield _validate_tts_chunk(first_chunk)
 
     async for chunk in iterator:
         yield _validate_tts_chunk(chunk)
-
-
-# ---------------------------------------------------------------------------
-# Public streaming API
-# ---------------------------------------------------------------------------
 
 
 async def stream_tts_chunks(
@@ -539,19 +566,35 @@ async def stream_tts_chunks(
 ) -> AsyncGenerator[TTSChunk, None]:
     """Stream TTS audio chunks for WebSocket delivery.
 
-    This path is intentionally uncached by default. Streaming is usually used
-    for low-latency robot playback, and cache checks are better handled by the
-    orchestrator if needed.
+    Yields TTSChunk objects as audio arrives from ElevenLabs — true streaming,
+    not buffered. The orchestrator iterates this and sends each chunk as a
+    binary WebSocket frame.
+
+    This path is intentionally not cached. Streaming is used for real-time
+    robot playback; the cache is used for pre-generated filler audio and the
+    full-audio (synthesize_speech) path.
+
+    Args:
+        text:     Text to synthesize.
+        voice_id: ElevenLabs voice ID override. Falls back to settings.
+
+    Yields:
+        TTSChunk instances. The last chunk has is_final=True.
+
+    Raises:
+        TypeError:       If text is not a string.
+        ValueError:      If text is empty or exceeds _MAX_TEXT_LENGTH.
+        ElevenLabsError: If the stream fails or stalls.
     """
     normalized_text = _normalize_text(text)
     effective_voice_id = _resolve_voice_id(voice_id)
     turn_id = str(uuid.uuid4())
 
     logger.debug(
-        "Starting TTS stream: turn_id=%s text_length=%d voice_id=%s text=%r",
-        turn_id,
+        "TTS stream start: turn=%s text_len=%d voice=%s text=%r",
+        turn_id[:8],
         len(normalized_text),
-        effective_voice_id,
+        effective_voice_id[:8],
         _sanitize_for_log(normalized_text),
     )
 
@@ -562,9 +605,12 @@ async def stream_tts_chunks(
             voice_id=effective_voice_id,
         ):
             yield chunk
+
     except Exception:
         logger.exception("stream_tts_chunks failed: turn_id=%s", turn_id)
         raise
 
+
+# ── ADK FunctionTool registration ─────────────────────────────────────────────
 
 synthesize_speech_tool = FunctionTool(func=synthesize_speech)
