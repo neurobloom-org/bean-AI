@@ -241,7 +241,7 @@ class _RoutingDiagnostics:
     """Observability fields written to session state after every run."""
 
     used_fallback: bool
-    failure_reason: str   # "" on success; short code string on failure
+    failure_reason: str  # "" on success; short code string on failure
     attempt_count: int
     alert_suspected: bool  # True if LLM proposed "alert" before any downgrade
 
@@ -484,17 +484,13 @@ class RoutingAgent(BaseAgent):
             log.debug("Empty transcript → default route, no LLM call")
             yield Event(
                 author=self.name,
-                actions=EventActions(
-                    state_delta=_build_empty_transcript_delta()
-                ),
+                actions=EventActions(state_delta=_build_empty_transcript_delta()),
             )
             return
 
         # ── LLM classification with retry ─────────────────────────────────────
         t0 = time.perf_counter()
-        decision, diagnostics = await self._classify_with_retry(
-            inputs=inputs, log=log
-        )
+        decision, diagnostics = await self._classify_with_retry(inputs=inputs, log=log)
         latency_ms = round((time.perf_counter() - t0) * 1000, 1)
 
         log.info(
@@ -537,9 +533,7 @@ class RoutingAgent(BaseAgent):
             user_text=_sanitize_user_text(inputs.user_text)[:MAX_TRANSCRIPT_CHARS],
             emotion=inputs.emotion,
             turn_number=inputs.turn_number,
-            route_distribution=_serialize_route_distribution(
-                inputs.route_distribution
-            ),
+            route_distribution=_serialize_route_distribution(inputs.route_distribution),
         )
 
         total_attempts = 1 + MAX_LLM_RETRIES

@@ -79,9 +79,7 @@ def _get_client() -> AsyncElevenLabs:
     if _client is None:
         settings = get_settings()
         if not settings.elevenlabs_api_key:
-            raise ElevenLabsError(
-                "ELEVENLABS_API_KEY is not configured"
-            )
+            raise ElevenLabsError("ELEVENLABS_API_KEY is not configured")
         _client = AsyncElevenLabs(api_key=settings.elevenlabs_api_key)
     return _client
 
@@ -252,9 +250,7 @@ async def synthesize_speech_full(
         )
 
         if not result:
-            raise ElevenLabsError(
-                "ElevenLabs returned empty audio — no bytes received"
-            )
+            raise ElevenLabsError("ElevenLabs returned empty audio — no bytes received")
 
         logger.debug(
             "TTS full: %d bytes turn=%s voice=%s",

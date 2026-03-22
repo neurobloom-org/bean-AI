@@ -210,9 +210,7 @@ class AlertAgent(BaseAgent):
         # ── Resolve thresholds from config ────────────────────────────────────
         settings = get_settings()
         threshold = (
-            settings.minor_alert_threshold
-            if is_minor
-            else settings.alert_threshold
+            settings.minor_alert_threshold if is_minor else settings.alert_threshold
         )
 
         # ── Factor evaluation ─────────────────────────────────────────────────

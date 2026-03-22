@@ -85,8 +85,8 @@ class Settings(BaseSettings):  # type: ignore[misc]
     # Number of active safety factors required to reach AlertLevel.HIGH.
     # Adults need 3 of 5 factors; minors need only 2 because F4 (vulnerability)
     # is always pre-counted for them, so they effectively start at 1.
-    alert_threshold: int = 3         # adult trigger point
-    minor_alert_threshold: int = 2   # minor trigger point (was wrongly 3 before)
+    alert_threshold: int = 3  # adult trigger point
+    minor_alert_threshold: int = 2  # minor trigger point (was wrongly 3 before)
 
     # Minimum seconds between guardian SMS alerts for the same user.
     # Prevents alert spam during long sessions with sustained crisis signals.
@@ -125,9 +125,7 @@ class Settings(BaseSettings):  # type: ignore[misc]
     # ── Google OAuth (Calendar) ───────────────────────────────────────────────
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
-    google_oauth_redirect_uri: str = (
-        "http://localhost:8080/api/v1/auth/google/callback"
-    )
+    google_oauth_redirect_uri: str = "http://localhost:8080/api/v1/auth/google/callback"
 
     # ── Aliases ───────────────────────────────────────────────────────────────
 

@@ -113,9 +113,7 @@ def _get_client() -> genai.Client:
     settings = get_settings()
 
     if not settings.google_api_key:
-        raise LLMError(
-            "GOOGLE_API_KEY is not configured — cannot make LLM calls"
-        )
+        raise LLMError("GOOGLE_API_KEY is not configured — cannot make LLM calls")
 
     return genai.Client(api_key=settings.google_api_key)
 
@@ -259,9 +257,7 @@ async def generate_json(
             exc,
             raw[:300],
         )
-        raise ValueError(
-            f"LLM returned non-JSON for task '{task}': {exc}"
-        ) from exc
+        raise ValueError(f"LLM returned non-JSON for task '{task}': {exc}") from exc
 
 
 async def generate_stream(
@@ -324,9 +320,7 @@ async def generate_stream(
             model_name,
             exc,
         )
-        raise LLMError(
-            f"LLM stream failed for task '{task}': {exc}"
-        ) from exc
+        raise LLMError(f"LLM stream failed for task '{task}': {exc}") from exc
 
 
 # ── Convenience wrappers ──────────────────────────────────────────────────────

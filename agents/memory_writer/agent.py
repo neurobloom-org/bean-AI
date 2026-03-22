@@ -370,6 +370,7 @@ class MemoryWriterAgent(BaseAgent):
         # Step 2 — fetch existing profile so we can merge arrays, not overwrite.
         existing_profile: dict[str, Any] = {}
         try:
+
             async def _fetch_profile() -> dict[str, Any]:
                 client = await get_service_client()
                 result = (
@@ -417,6 +418,7 @@ class MemoryWriterAgent(BaseAgent):
 
         # Step 4 — upsert the merged result.
         try:
+
             async def _do_upsert() -> None:
                 client = await get_service_client()
                 await (
@@ -531,8 +533,7 @@ class MemoryWriterAgent(BaseAgent):
         # and must never be stored (privacy guarantee). Do not add it here.
         settings = get_settings()
         expires_at = (
-            datetime.now(UTC)
-            + timedelta(days=settings.episodic_memory_retention_days)
+            datetime.now(UTC) + timedelta(days=settings.episodic_memory_retention_days)
         ).isoformat()
 
         row: dict[str, Any] = {
@@ -546,6 +547,7 @@ class MemoryWriterAgent(BaseAgent):
 
         # Step 2 — insert the vector row.
         try:
+
             async def _do_insert() -> None:
                 client = await get_service_client()
                 await client.table("episodic_memories").insert(row).execute()
@@ -639,7 +641,7 @@ class MemoryWriterAgent(BaseAgent):
 def _sanitize_emotion(raw: str) -> str:
     """Clamp the emotion string to a safe length and strip unsafe chars."""
     cleaned = "".join(c for c in str(raw).lower() if c.isalnum() or c in {"_", " "})
-    cleaned = " ".join(cleaned.split())[: _EMOTION_MAX_LEN]
+    cleaned = " ".join(cleaned.split())[:_EMOTION_MAX_LEN]
     return cleaned or "neutral"
 
 

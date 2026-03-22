@@ -296,8 +296,7 @@ async def send_guardian_alert(
         except Exception as exc:
             last_exc = exc
             logger.error(
-                "send_guardian_alert: attempt %d/%d failed: %s "
-                "(level=%s session=%s)",
+                "send_guardian_alert: attempt %d/%d failed: %s (level=%s session=%s)",
                 attempt,
                 _GUARDIAN_ALERT_MAX_ATTEMPTS,
                 exc,

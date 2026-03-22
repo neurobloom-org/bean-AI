@@ -223,7 +223,7 @@ async def check_pending_reminders() -> int:
             .not_.is_("reminder_at", "null")
             .lte("reminder_at", now_iso)
             .gte("reminder_at", staleness_cutoff)  # skip stale reminders
-            .order("reminder_at", desc=False)       # oldest first
+            .order("reminder_at", desc=False)  # oldest first
             .limit(_TASK_BATCH_LIMIT)
             .execute()
         )
@@ -234,11 +234,13 @@ async def check_pending_reminders() -> int:
             return 0
 
         # Batch phone lookups — one auth call per unique user, not per task.
-        unique_user_ids = list({
-            str(t["user_id"])
-            for t in tasks
-            if isinstance(t, Mapping) and t.get("user_id")
-        })
+        unique_user_ids = list(
+            {
+                str(t["user_id"])
+                for t in tasks
+                if isinstance(t, Mapping) and t.get("user_id")
+            }
+        )
 
         phone_map = await _fetch_user_phones(unique_user_ids)
 

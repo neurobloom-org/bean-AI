@@ -340,9 +340,7 @@ async def decode_supabase_jwt(token: str) -> dict[str, Any]:
 
     if alg == "RS256":
         if not kid:
-            raise AuthError(
-                "RS256 token is missing the 'kid' (key ID) header field"
-            )
+            raise AuthError("RS256 token is missing the 'kid' (key ID) header field")
         return await _decode_with_jwks(token, str(kid))
 
     raise AuthError(
@@ -403,7 +401,7 @@ def extract_token_from_websocket(websocket: WebSocket) -> str | None:
     for proto in protocol_header.split(","):
         proto = proto.strip()
         if proto.startswith("bearer."):
-            token = proto[len("bearer."):].strip()
+            token = proto[len("bearer.") :].strip()
             if token:
                 return token
 
@@ -484,7 +482,7 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):  # type: ignore[misc]
             return JSONResponse(
                 status_code=401,
                 content={"detail": str(exc)},
-                headers={"WWW-Authenticate": "Bearer error=\"invalid_token\""},
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
             )
 
         except AuthError as exc:
@@ -492,7 +490,7 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):  # type: ignore[misc]
             return JSONResponse(
                 status_code=401,
                 content={"detail": str(exc)},
-                headers={"WWW-Authenticate": "Bearer error=\"invalid_token\""},
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
             )
 
         return await call_next(request)

@@ -122,10 +122,7 @@ async def purge_expired_tts_cache() -> int:
         now = datetime.now(UTC).isoformat()
 
         result = await asyncio.wait_for(
-            client.table("tts_cache")
-            .delete()
-            .lt("expires_at", now)
-            .execute(),
+            client.table("tts_cache").delete().lt("expires_at", now).execute(),
             timeout=_DB_TIMEOUT_SECONDS,
         )
 
@@ -200,9 +197,7 @@ async def cleanup_ended_sessions() -> int:
         total_changed += expired_count
 
         if expired_count:
-            logger.info(
-                "[Cleanup] Marked %d stale sessions as expired", expired_count
-            )
+            logger.info("[Cleanup] Marked %d stale sessions as expired", expired_count)
 
     except asyncio.TimeoutError:
         logger.error(
@@ -232,8 +227,7 @@ async def cleanup_ended_sessions() -> int:
 
         if deleted_count:
             logger.info(
-                "[Cleanup] Deleted %d old ended/expired sessions "
-                "(retention=%d days)",
+                "[Cleanup] Deleted %d old ended/expired sessions (retention=%d days)",
                 deleted_count,
                 retention_days,
             )

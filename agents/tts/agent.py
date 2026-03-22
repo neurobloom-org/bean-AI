@@ -194,9 +194,7 @@ def _validate_tts_chunk(chunk: Any) -> TTSChunk:
 
     # Final chunks may have empty audio (sentinel signal). Non-final must not.
     if not is_final and not audio_chunk:
-        raise ValueError(
-            "TTSChunk.audio_chunk cannot be empty for non-final chunks."
-        )
+        raise ValueError("TTSChunk.audio_chunk cannot be empty for non-final chunks.")
 
     return chunk
 
@@ -393,7 +391,7 @@ async def save_tts_cache(
             .upsert(
                 {
                     "cache_key": cache_key,
-                    "phrase": text,        # column is "phrase" per 001_schema.sql
+                    "phrase": text,  # column is "phrase" per 001_schema.sql
                     "voice_id": voice_id,
                     "audio_b64": audio_b64,
                 },
@@ -484,9 +482,7 @@ async def synthesize_speech(
 
         cached_audio_b64 = await get_cached_tts(cache_key)
         if cached_audio_b64 is not None:
-            logger.debug(
-                "TTS cache HIT turn=%s key=%s…", turn_id[:8], cache_key[:12]
-            )
+            logger.debug("TTS cache HIT turn=%s key=%s…", turn_id[:8], cache_key[:12])
             return _build_success_response(
                 audio_b64=cached_audio_b64,
                 voice_id=effective_voice_id,

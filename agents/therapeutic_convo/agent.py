@@ -129,9 +129,7 @@ class TherapeuticConvoAgent(BaseAgent):
 
         transcript: str = str(state.get("current_transcript") or "")
         emotion: str = str(state.get("current_emotion") or "neutral")
-        memory: str = str(
-            state.get("memory_context") or "No memory context available."
-        )
+        memory: str = str(state.get("memory_context") or "No memory context available.")
         is_minor: bool = bool(state.get("is_minor", False))
 
         # ── Fast exit: empty transcript ───────────────────────────────────────
@@ -312,9 +310,7 @@ class TherapeuticConvoAgent(BaseAgent):
             return _FALLBACK_RESPONSE
 
         except Exception as exc:
-            logger.error(
-                "TherapyAgent: unexpected generation error: %s", exc
-            )
+            logger.error("TherapyAgent: unexpected generation error: %s", exc)
             return _FALLBACK_RESPONSE
 
 

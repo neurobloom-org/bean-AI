@@ -204,9 +204,7 @@ class DeepgramConnection:
         if self._ws is not None and getattr(self._ws, "close_code", None) is None:
             try:
                 await self._ws.send(json.dumps({"type": "CloseStream"}))
-                await asyncio.wait_for(
-                    self._ws.close(), timeout=_CLOSE_TIMEOUT_SECONDS
-                )
+                await asyncio.wait_for(self._ws.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
             except Exception as exc:
                 # Non-critical — the connection is going away regardless.
                 logger.debug("Deepgram close error (non-critical): %s", exc)
@@ -241,9 +239,7 @@ class DeepgramConnection:
         except Exception as exc:
             # Task raised an unexpected exception before it was cancelled.
             # Log it so it's visible but don't let it block teardown.
-            logger.error(
-                "Deepgram receive task raised on cancel: %s", exc
-            )
+            logger.error("Deepgram receive task raised on cancel: %s", exc)
 
     # ── Audio sending ─────────────────────────────────────────────────────────
 
@@ -290,9 +286,7 @@ class DeepgramConnection:
             # Mark disconnected and raise so the STT agent can act.
             logger.error("send_audio unexpected error: %s — marking disconnected", exc)
             self._connected = False
-            raise DeepgramConnectionError(
-                f"Deepgram send_audio failed: {exc}"
-            ) from exc
+            raise DeepgramConnectionError(f"Deepgram send_audio failed: {exc}") from exc
 
     async def send_audio_b64(self, audio_b64: str) -> None:
         """Decode a base64 audio payload and forward it to Deepgram.
@@ -404,9 +398,7 @@ class DeepgramConnection:
                         logger.debug("Deepgram SpeechStarted")
 
                     else:
-                        logger.debug(
-                            "Deepgram unrecognised message type: %r", msg_type
-                        )
+                        logger.debug("Deepgram unrecognised message type: %r", msg_type)
 
                 except json.JSONDecodeError:
                     logger.warning(
@@ -461,7 +453,9 @@ class DeepgramConnection:
             speech_final = bool(data.get("speech_final", False))
 
             result = TranscriptResult(
-                type="transcript_final" if (is_final or speech_final) else "transcript_partial",
+                type="transcript_final"
+                if (is_final or speech_final)
+                else "transcript_partial",
                 text=text,
                 confidence=confidence,
                 is_final=is_final or speech_final,

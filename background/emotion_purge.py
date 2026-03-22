@@ -63,10 +63,7 @@ async def purge_old_emotion_events() -> int:
         client = await get_service_client()
 
         result = await asyncio.wait_for(
-            client.table("emotion_events")
-            .delete()
-            .lt("detected_at", cutoff)
-            .execute(),
+            client.table("emotion_events").delete().lt("detected_at", cutoff).execute(),
             timeout=_DB_TIMEOUT_SECONDS,
         )
 
@@ -111,18 +108,14 @@ async def run_emotion_purge_loop() -> None:
     """
     interval_seconds = PURGE_INTERVAL_HOURS * 3600
 
-    logger.info(
-        "[EmotionPurge] Loop started — interval=%dh", PURGE_INTERVAL_HOURS
-    )
+    logger.info("[EmotionPurge] Loop started — interval=%dh", PURGE_INTERVAL_HOURS)
 
     while True:
         try:
             count = await purge_old_emotion_events()
 
             if count:
-                logger.info(
-                    "[EmotionPurge] Cycle complete — deleted %d rows", count
-                )
+                logger.info("[EmotionPurge] Cycle complete — deleted %d rows", count)
 
             await asyncio.sleep(interval_seconds)
 
