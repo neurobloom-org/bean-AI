@@ -31,7 +31,11 @@ from api.routes import alerts, auth, emotions, guardian, health, sessions, tasks
 from api.websocket_handler import router as ws_router
 from background.emotion_purge import run_emotion_purge_loop
 from background.reminder_check import run_reminder_check_loop
-from background.session_cleanup import run_all_purges, run_session_cleanup_loop, run_transcript_purge_loop
+from background.session_cleanup import (
+    run_all_purges,
+    run_session_cleanup_loop,
+    run_transcript_purge_loop,
+)
 from services.supabase_client import check_db_health, close_clients
 from shared.config import get_settings
 
@@ -81,18 +85,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # is the single owner of scheduled emotion_events deletion (per emotion_purge.py).
     _background_tasks.extend(
         [
-            asyncio.create_task(
-                run_transcript_purge_loop(), name="transcript-purge"
-            ),
-            asyncio.create_task(
-                run_session_cleanup_loop(), name="session-cleanup"
-            ),
-            asyncio.create_task(
-                run_reminder_check_loop(), name="reminder-check"
-            ),
-            asyncio.create_task(
-                run_emotion_purge_loop(), name="emotion-purge"
-            ),
+            asyncio.create_task(run_transcript_purge_loop(), name="transcript-purge"),
+            asyncio.create_task(run_session_cleanup_loop(), name="session-cleanup"),
+            asyncio.create_task(run_reminder_check_loop(), name="reminder-check"),
+            asyncio.create_task(run_emotion_purge_loop(), name="emotion-purge"),
         ]
     )
 
@@ -121,6 +117,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # pool on every restart.
     try:
         from api.routes.auth import OAUTH_HTTP_CLIENT
+
         await OAUTH_HTTP_CLIENT.aclose()
         logger.info("✓ OAuth HTTP client closed")
     except Exception as exc:  # pragma: no cover
@@ -220,7 +217,8 @@ def _register_internal_routes(app: FastAPI) -> None:
     async def trigger_purge(request: Request) -> JSONResponse:
         """Trigger an immediate full data purge sweep (admin only)."""
         _require_internal_key(
-            request.headers.get("x-internal-key") or request.headers.get("X-Internal-Key")
+            request.headers.get("x-internal-key")
+            or request.headers.get("X-Internal-Key")
         )
         try:
             results = await run_all_purges()

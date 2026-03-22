@@ -1,4 +1,4 @@
-"""BEAN AI v5 — ESP32 WebSocket handler.
+"""BEAN AI v1 — ESP32 WebSocket handler.
 
 Handles the full real-time audio pipeline:
   ESP32 → PCM16 audio → Deepgram STT → Orchestrator → ElevenLabs TTS → ESP32
@@ -36,6 +36,11 @@ Bugs fixed vs. original:
     it; moved to after the loop.
   - No keepalive task → ESP32 connections would silently time out under
     quiet periods. A server-side ping task now runs every ws_ping_interval_seconds.
+  - DeepgramConnection was assigned a tuple (trailing comma) instead of the
+    connection object itself.
+  - on_transcript / on_utterance_end passed with wrong signatures; wrapped
+    in lambdas that close over session so the signatures match what
+    DeepgramConnection expects.
 """
 
 from __future__ import annotations
@@ -55,7 +60,7 @@ from services.elevenlabs_service import stream_tts_to_websocket
 from services.privacy_service import privacy_service
 from services.supabase_client import get_service_client
 from shared.config import get_settings
-from shared.exceptions import WebSocketAuthError  # FIX: canonical import location
+from shared.exceptions import WebSocketAuthError
 from shared.schemas import utcnow
 
 logger = logging.getLogger(__name__)
@@ -141,8 +146,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     Audio:  Binary frames, PCM16 @ 16 kHz, mono
     Control: JSON messages — ping/pong, emotion results, robot status, etc.
     """
-    # Accept the connection, echoing the bearer subprotocol so the ESP32
-    # knows we confirmed its chosen subprotocol.
     raw_protocol = websocket.headers.get("Sec-WebSocket-Protocol", "")
     chosen = (
         raw_protocol.split(",")[0].strip()
@@ -155,7 +158,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         user_id, _payload = await authenticate_websocket(websocket)
     except WebSocketAuthError:
-        # authenticate_websocket already closed the socket with code 4401.
         return
 
     # ── Create session ────────────────────────────────────────────────────────
@@ -171,7 +173,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await websocket.close(code=1011, reason="Session initialisation failed")
         return
 
-    # Register in active-session map so reminder_check can inject reminders.
     _active_sessions[session_id] = {
         "user_id": user_id,
         "websocket": websocket,
@@ -185,20 +186,22 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     await session.send_json({"type": "connected", "session_id": session_id})
 
     # ── Deepgram STT ──────────────────────────────────────────────────────────
+    # FIX: removed trailing comma (was creating a tuple instead of a
+    # DeepgramConnection). Callbacks wrapped in lambdas that close over
+    # `session` so their signatures match what DeepgramConnection expects:
+    #   on_transcript:    Callable[[TranscriptResult], Coroutine]
+    #   on_utterance_end: Callable[[], Coroutine]
     try:
         session.deepgram = DeepgramConnection(
-            
-                on_transcript=_handle_transcript,
-                on_utterance_end=_handle_utterance_end,
-        ),
-        
+            on_transcript=lambda t: _handle_transcript(session, t),
+            on_utterance_end=lambda: _handle_utterance_end(session),
+        )
         await session.deepgram.connect()
     except Exception as exc:
         logger.error("Deepgram connection failed: %s", exc)
         await session.send_json(
             {"type": "error", "code": "stt_unavailable", "message": str(exc)}
         )
-        # Continue without STT — text control messages still work.
 
     settings = get_settings()
 
@@ -206,8 +209,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     reminder_task = asyncio.create_task(
         _poll_reminders(session), name=f"reminders-{session_id[:8]}"
     )
-    # FIX: Added server-side keepalive ping so ESP32 doesn't time out silently
-    # on quiet periods (e.g. user is just listening to TTS).
     keepalive_task = asyncio.create_task(
         _keepalive_ping(session, interval=settings.ws_ping_interval_seconds),
         name=f"keepalive-{session_id[:8]}",
@@ -218,7 +219,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         while True:
             message = await websocket.receive()
 
-            # Binary frame — raw PCM16 audio from the ESP32 microphone.
             if message.get("bytes"):
                 audio_bytes: bytes = message["bytes"]
 
@@ -242,7 +242,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if session.deepgram and session.deepgram.is_connected:
                     await session.deepgram.send_audio(audio_bytes)
 
-            # Text frame — JSON control message from the ESP32 firmware.
             elif message.get("text"):
                 try:
                     data = json.loads(message["text"])
@@ -335,24 +334,10 @@ async def _handle_utterance_end(session: BEANSession) -> None:
 
 
 async def _process_turn(session: BEANSession, user_text: str) -> None:
-    """Run the full orchestrator pipeline for one conversation turn.
-
-    The orchestrator:
-      Phase 1 — Safety keyword pre-screen
-      Phase 2 — Route decision (Gemini Flash)
-      Phase 3 — Memory context fetch
-      Phase 4 — Sub-agent dispatch (casual/therapy/task/music/alert)
-      Phase 5 — Non-blocking background tasks (safety, memory, transcript)
-
-    FIX: Removed broken set_session_token / get_pending_music_command calls.
-         Orchestrator already fetches the calendar token internally in _dispatch.
-         Music command is now read from session_state after the loop completes.
-    FIX: route is read AFTER the orchestrator loop, not inside it.
-    """
+    """Run the full orchestrator pipeline for one conversation turn."""
     session.turn_count += 1
     turn_id = str(uuid.uuid4())
 
-    # Fetch recent transcript context for the orchestrator's memory phase.
     recent = await privacy_service.get_recent_transcript(
         session_id=session.session_id, max_turns=10
     )
@@ -375,8 +360,6 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
 
     response_text = ""
 
-    # Run orchestrator.  After completion, session_state will have been
-    # mutated by the orchestrator's ctx.session.state assignments.
     async for event in orchestrator.run_async(
         user_id=session.user_id,
         session_id=session.session_id,
@@ -385,14 +368,10 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         if event.content and event.content.parts:
             response_text = event.content.parts[0].text or ""
 
-    # FIX: Read route and music_command AFTER the loop — orchestrator sets
-    # them in session_state during its run, so reading inside the loop could
-    # race with those assignments.
     route: str = session_state.get("route", "casual")
     music_command: dict | None = session_state.get("music_command")
 
     if not response_text:
-        # Fallback: orchestrator might have put it in state directly.
         response_text = session_state.get("response_text", "")
 
     if not response_text:
@@ -402,12 +381,10 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         )
         return
 
-    # Update in-memory route distribution for session analytics.
     session.route_distribution[route] = (
         session.route_distribution.get(route, 0) + 1
     )
 
-    # ── Send response text to ESP32 ───────────────────────────────────────────
     await session.send_json(
         {
             "type": "response_text",
@@ -417,7 +394,6 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         }
     )
 
-    # ── Forward music command to ESP32 (music route only) ─────────────────────
     if music_command and isinstance(music_command, dict):
         await session.send_json(music_command)
         logger.info(
@@ -425,15 +401,12 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
             music_command.get("type"), session.session_id[:8],
         )
 
-    # ── Post-alert notification ───────────────────────────────────────────────
     post_alert = session_state.get("post_alert_message")
     if post_alert:
         await session.send_json(
             {"type": "alert_notification", "message": post_alert}
         )
 
-    # ── Stream TTS audio to ESP32 ─────────────────────────────────────────────
-    # Skip TTS for pure music commands that have no companion spoken text.
     tts_text = response_text if route != "music" else (
         response_text if response_text.strip() else None
     )
@@ -493,12 +466,7 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
 
 
 async def _keepalive_ping(session: BEANSession, interval: int = 20) -> None:
-    """Send periodic server-initiated pings to keep the ESP32 TCP connection alive.
-
-    Without this, NAT/firewall idle timeouts would silently drop the connection
-    while the robot is just listening to TTS or waiting for the user to speak.
-    Exits cleanly on CancelledError (triggered during session teardown).
-    """
+    """Send periodic server-initiated pings to keep the ESP32 TCP connection alive."""
     while True:
         try:
             await asyncio.sleep(interval)
@@ -512,7 +480,7 @@ async def _keepalive_ping(session: BEANSession, interval: int = 20) -> None:
                 "Keepalive ping failed [session=%s]: %s",
                 session.session_id[:8], exc,
             )
-            break  # Socket is gone — stop pinging.
+            break
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -521,23 +489,18 @@ async def _keepalive_ping(session: BEANSession, interval: int = 20) -> None:
 
 
 async def _poll_reminders(session: BEANSession) -> None:
-    """Deliver pending reminders injected by the background reminder_check job.
-
-    background/reminder_check.py sets _active_sessions[session_id]["pending_reminder"]
-    when a task is due.  This loop picks it up and forwards it to the ESP32.
-    """
+    """Deliver pending reminders injected by the background reminder_check job."""
     while True:
         try:
             await asyncio.sleep(15)
             entry = _active_sessions.get(session.session_id)
             if not entry:
-                break  # Session was deregistered — stop polling.
+                break
 
             reminder = entry.get("pending_reminder")
             if not reminder:
                 continue
 
-            # Clear the reminder before delivering to prevent double-fire.
             entry["pending_reminder"] = None
 
             await session.send_json(
