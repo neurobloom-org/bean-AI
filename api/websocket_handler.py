@@ -1,4 +1,4 @@
-"""BEAN AI v1 — ESP32 WebSocket handler.
+"""BEAN AI v5 — ESP32 WebSocket handler.
 
 Handles the full real-time audio pipeline:
   ESP32 → PCM16 audio → Deepgram STT → Orchestrator → ElevenLabs TTS → ESP32
@@ -41,6 +41,9 @@ Bugs fixed vs. original:
   - on_transcript / on_utterance_end passed with wrong signatures; wrapped
     in lambdas that close over session so the signatures match what
     DeepgramConnection expects.
+  - orchestrator.run_async() called with user_id/session_id/session_state
+    kwargs that BaseAgent.run_async() does not accept. Fixed to use
+    InMemoryRunner — the correct ADK public API for invoking agents.
 """
 
 from __future__ import annotations
@@ -51,6 +54,8 @@ import logging
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from google.adk.runners import InMemoryRunner
+from google.genai import types as genai_types
 
 from agents.orchestrator.agent import orchestrator
 from api.middleware.auth_middleware import authenticate_websocket
@@ -360,13 +365,38 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
 
     response_text = ""
 
-    async for event in orchestrator.run_async(
+    # FIX: BaseAgent.run_async() does not accept user_id/session_id/session_state
+    # as kwargs — those belong to Runner.run_async(). Must go through
+    # InMemoryRunner, which is the correct ADK public API for invoking agents
+    # from outside the framework. This is the same pattern the orchestrator
+    # itself uses for sub-agent dispatch.
+    runner = InMemoryRunner(agent=orchestrator)
+    runner_session = await runner.session_service.create_session(
+        app_name=runner.app_name,
         user_id=session.user_id,
-        session_id=session.session_id,
-        session_state=session_state,
+        state=session_state,
+    )
+
+    async for event in runner.run_async(
+        user_id=session.user_id,
+        session_id=runner_session.id,
+        new_message=genai_types.Content(
+            role="user",
+            parts=[genai_types.Part(text=user_text)],
+        ),
     ):
         if event.content and event.content.parts:
             response_text = event.content.parts[0].text or ""
+
+    # Read back state mutations the orchestrator made during its run
+    # (route, music_command, response_text, post_alert_message, etc.)
+    updated_session = await runner.session_service.get_session(
+        app_name=runner.app_name,
+        user_id=session.user_id,
+        session_id=runner_session.id,
+    )
+    if updated_session:
+        session_state = dict(updated_session.state)
 
     route: str = session_state.get("route", "casual")
     music_command: dict | None = session_state.get("music_command")
