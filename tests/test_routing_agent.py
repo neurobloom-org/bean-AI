@@ -45,12 +45,11 @@ def _make_ctx(state: dict[str, Any]) -> MagicMock:
 
 
 async def _run_agent(state: dict[str, Any]) -> dict[str, Any]:
-    """Run the routing agent against the given state dict and return it."""
     ctx = _make_ctx(state)
     agent = RoutingAgent(name="test_routing_agent")
-    # Consume the async generator fully.
-    async for _ in agent._run_async_impl(ctx):
-        pass
+    async for event in agent._run_async_impl(ctx):
+        if event.actions and event.actions.state_delta:
+            state.update(event.actions.state_delta)
     return state
 
 
