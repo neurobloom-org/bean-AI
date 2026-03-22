@@ -1,4 +1,4 @@
-name: CI
+name: CI / CD
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
       - develop
       - main
 
-# Define environment variables once at the top level
 env:
   ENVIRONMENT: test
   DEBUG: "false"
@@ -37,11 +36,13 @@ env:
   EPISODIC_MEMORY_RETENTION_DAYS: "365"
   SESSION_METADATA_RETENTION_DAYS: "730"
   ALERT_THRESHOLD: "3"
+  MINOR_ALERT_THRESHOLD: "2"
   GUARDIAN_ALERT_COOLDOWN_SECONDS: "300"
   RATE_LIMIT_WS_MESSAGES_PER_MIN: "60"
   RATE_LIMIT_API_CALLS_PER_MIN: "100"
   RATE_LIMIT_HASH_SALT: "dummy-salt-for-ci"
   OAUTH_STATE_SECRET: "dummy-oauth-secret-for-ci"
+  INTERNAL_API_KEY: "dummy-internal-key-for-ci"
   FRONTEND_BASE_URL: "http://localhost:3000"
 
 jobs:
@@ -121,4 +122,88 @@ jobs:
         run: pip install -e '.[dev]' --extra-index-url https://download.pytorch.org/whl/cpu
 
       - name: Run pytest with coverage
-        run: pytest --cov=. --cov-report=term-missing -v -p no:cacheprovider || exit 0
+        run: pytest tests/ -v --cov=. --cov-report=term-missing
+
+  # ── Job 4: Deploy to Cloud Run (production) ────────────────────────────────
+  # Runs only when code is merged to main.
+  # Requires these GitHub Actions secrets to be configured in your repo:
+  #   GCP_PROJECT_ID        — your Google Cloud project ID
+  #   GCP_SERVICE_ACCOUNT   — service account JSON key with Cloud Run + GCR permissions
+  #   CLOUD_RUN_SERVICE     — Cloud Run service name (e.g. bean-ai)
+  #   CLOUD_RUN_REGION      — deployment region (e.g. asia-south1)
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build Docker image (production stage)
+        run: |
+          docker build \
+            --target production \
+            --tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.CLOUD_RUN_SERVICE }}:${{ github.sha }} \
+            --tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.CLOUD_RUN_SERVICE }}:latest \
+            .
+
+      - name: Push image to GCR
+        run: |
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.CLOUD_RUN_SERVICE }}:${{ github.sha }}
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.CLOUD_RUN_SERVICE }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ secrets.CLOUD_RUN_SERVICE }} \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.CLOUD_RUN_SERVICE }}:${{ github.sha }} \
+            --platform managed \
+            --region ${{ secrets.CLOUD_RUN_REGION }} \
+            --port 8080 \
+            --memory 2Gi \
+            --cpu 2 \
+            --min-instances 1 \
+            --max-instances 10 \
+            --timeout 300 \
+            --concurrency 80 \
+            --set-env-vars="ENVIRONMENT=production" \
+            --update-secrets="\
+              SUPABASE_URL=SUPABASE_URL:latest,\
+              SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,\
+              SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,\
+              SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest,\
+              GOOGLE_API_KEY=GOOGLE_API_KEY:latest,\
+              OPENAI_API_KEY=OPENAI_API_KEY:latest,\
+              DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest,\
+              ELEVENLABS_API_KEY=ELEVENLABS_API_KEY:latest,\
+              TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,\
+              TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,\
+              TWILIO_FROM_NUMBER=TWILIO_FROM_NUMBER:latest,\
+              RATE_LIMIT_HASH_SALT=RATE_LIMIT_HASH_SALT:latest,\
+              OAUTH_STATE_SECRET=OAUTH_STATE_SECRET:latest,\
+              INTERNAL_API_KEY=INTERNAL_API_KEY:latest,\
+              CORS_ALLOWED_ORIGINS=CORS_ALLOWED_ORIGINS:latest,\
+              FRONTEND_BASE_URL=FRONTEND_BASE_URL:latest,\
+              GOOGLE_OAUTH_CLIENT_ID=GOOGLE_OAUTH_CLIENT_ID:latest,\
+              GOOGLE_OAUTH_CLIENT_SECRET=GOOGLE_OAUTH_CLIENT_SECRET:latest,\
+              GOOGLE_OAUTH_REDIRECT_URI=GOOGLE_OAUTH_REDIRECT_URI:latest" \
+            --quiet
+
+      - name: Verify deployment
+        run: |
+          gcloud run services describe ${{ secrets.CLOUD_RUN_SERVICE }} \
+            --platform managed \
+            --region ${{ secrets.CLOUD_RUN_REGION }} \
+            --format "value(status.url)"
