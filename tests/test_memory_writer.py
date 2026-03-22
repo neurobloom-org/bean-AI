@@ -362,19 +362,25 @@ class TestMemoryWriterAgentSuccess:
         }
         fake_embedding = [0.1] * 1536
 
+        # Build a fully synchronous mock chain so awaiting get_service_client()
+        # returns a plain MagicMock whose .table().select()... chain is also sync.
+        db = MagicMock()
+        db.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute = AsyncMock(
+            return_value=MagicMock(data=None)
+        )
+        db.table.return_value.upsert.return_value.execute = AsyncMock(
+            return_value=MagicMock(data=[{"user_id": "user-1"}])
+        )
+        db.table.return_value.insert.return_value.execute = AsyncMock(
+            return_value=MagicMock(data=[{"id": "mem-1"}])
+        )
+
+        async def fake_get_client():
+            return db
+
         with patch("agents.memory_writer.agent.generate_json", new_callable=AsyncMock, return_value=fake_facts):
             with patch("agents.memory_writer.agent.get_embedding", new_callable=AsyncMock, return_value=fake_embedding):
-                with patch("agents.memory_writer.agent.get_service_client", new_callable=AsyncMock) as mock_client:
-                    # Mock profile fetch and upsert
-                    mock_client.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute = AsyncMock(
-                        return_value=MagicMock(data=None)
-                    )
-                    mock_client.return_value.table.return_value.upsert.return_value.execute = AsyncMock(
-                        return_value=MagicMock(data=[{"user_id": "user-1"}])
-                    )
-                    mock_client.return_value.table.return_value.insert.return_value.execute = AsyncMock(
-                        return_value=MagicMock(data=[{"id": "mem-1"}])
-                    )
+                with patch("agents.memory_writer.agent.get_service_client", side_effect=fake_get_client):
                     result = await _run_agent(state)
 
         assert result["memory_write_done"] == "true"

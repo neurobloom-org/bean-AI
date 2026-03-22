@@ -157,10 +157,8 @@ class TestCanMutateResponseHeaders:
 class TestCheckRateLimit:
     @pytest.mark.asyncio
     async def test_allowed_when_under_limit(self):
-        mock_client = AsyncMock()
-        mock_client.rpc.return_value.execute = AsyncMock(return_value=MagicMock(data=5))
-
-        with patch("api.middleware.rate_limiter.get_service_client", return_value=mock_client):
+        with patch("api.middleware.rate_limiter.get_service_client", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value.rpc.return_value.execute = AsyncMock(return_value=MagicMock(data=5))
             with patch("api.middleware.rate_limiter.get_settings") as mock_settings:
                 mock_settings.return_value.rate_limit_hash_salt = "salt"
                 allowed, count = await check_rate_limit("user:abc", max_requests=100)
@@ -170,10 +168,8 @@ class TestCheckRateLimit:
 
     @pytest.mark.asyncio
     async def test_denied_when_over_limit(self):
-        mock_client = AsyncMock()
-        mock_client.rpc.return_value.execute = AsyncMock(return_value=MagicMock(data=101))
-
-        with patch("api.middleware.rate_limiter.get_service_client", return_value=mock_client):
+        with patch("api.middleware.rate_limiter.get_service_client", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value.rpc.return_value.execute = AsyncMock(return_value=MagicMock(data=101))
             with patch("api.middleware.rate_limiter.get_settings") as mock_settings:
                 mock_settings.return_value.rate_limit_hash_salt = "salt"
                 allowed, count = await check_rate_limit("user:abc", max_requests=100)
@@ -183,10 +179,8 @@ class TestCheckRateLimit:
 
     @pytest.mark.asyncio
     async def test_rpc_failure_denies_for_safety(self):
-        mock_client = AsyncMock()
-        mock_client.rpc.return_value.execute = AsyncMock(side_effect=RuntimeError("DB down"))
-
-        with patch("api.middleware.rate_limiter.get_service_client", return_value=mock_client):
+        with patch("api.middleware.rate_limiter.get_service_client", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value.rpc.return_value.execute = AsyncMock(side_effect=RuntimeError("DB down"))
             with patch("api.middleware.rate_limiter.get_settings") as mock_settings:
                 mock_settings.return_value.rate_limit_hash_salt = "salt"
                 allowed, count = await check_rate_limit("user:abc", max_requests=100)

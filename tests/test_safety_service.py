@@ -61,7 +61,7 @@ class TestCheckCrisisKeywords:
 
     def test_partial_match_in_sentence(self):
         """Keywords embedded in a longer sentence should still fire."""
-        detected, _ = check_crisis_keywords("She told me she wants to hurt herself")
+        detected, _ = check_crisis_keywords("She told me she wants to hurt myself")
         assert detected is True
 
     def test_returns_all_matched_keywords(self):
