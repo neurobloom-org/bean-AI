@@ -17,24 +17,32 @@ PRO tier (Gemini Pro):
   - Crisis response           (~$0.005/turn)
 
 Estimated saving vs "all Pro": ~85% reduction in LLM costs.
+
+SDK note:
+  Uses google-genai (google.genai) — the current supported package.
+  The old google-generativeai package is deprecated and no longer receives
+  updates. See: https://github.com/google-gemini/deprecated-generative-ai-python
 """
 
-import asyncio
+from __future__ import annotations
+
 import json
 import logging
+from collections.abc import AsyncGenerator
 from enum import Enum
 from typing import Any
-from collections.abc import AsyncGenerator
-import google.generativeai as genai
+
+from google import genai
+from google.genai import types as genai_types
 
 from shared.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 # Task → Tier mapping
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 
 
 class LLMTier(str, Enum):
@@ -74,9 +82,20 @@ def get_tier(task: str) -> LLMTier:
     return TASK_TIER_MAP.get(task, LLMTier.CHEAP)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+def _get_client() -> genai.Client:
+    """Create a google.genai Client with the configured API key.
+
+    A new Client is created per-call. This is intentional — Client objects
+    are lightweight and stateless, and creating one per-call avoids any
+    thread-safety concerns with a shared singleton in an async context.
+    """
+    settings = get_settings()
+    return genai.Client(api_key=settings.google_api_key)
+
+
+# ---------------------------------------------------------------------------
 # Core generation functions
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 
 
 async def generate(
@@ -86,7 +105,7 @@ async def generate(
     temperature: float | None = None,
     max_tokens: int | None = None,
 ) -> str:
-    """Generate a response using the appropriate model for the task.
+    """Generate a plain text response using the appropriate model for the task.
 
     Args:
         task:        Task name from TASK_TIER_MAP — determines model tier.
@@ -99,7 +118,7 @@ async def generate(
         Generated text response (stripped).
 
     Raises:
-        RuntimeError: If generation fails after retries.
+        RuntimeError: If generation fails.
     """
     settings = get_settings()
     model_name = get_model_for_task(task)
@@ -124,22 +143,23 @@ async def generate(
         )
     )
 
+    config = genai_types.GenerateContentConfig(
+        system_instruction=system,
+        temperature=_temperature,
+        max_output_tokens=_max_tokens,
+    )
+
     try:
-        genai.configure(api_key=settings.google_api_key)
+        client = _get_client()
 
-        generation_config = genai.types.GenerationConfig(
-            temperature=_temperature,
-            max_output_tokens=_max_tokens,
+        # The new SDK's async interface lives on client.aio — no asyncio.to_thread needed.
+        response = await client.aio.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=config,
         )
 
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=system,
-            generation_config=generation_config,
-        )
-
-        response = await asyncio.to_thread(model.generate_content, prompt)
-        text = response.text.strip()
+        text = (response.text or "").strip()
 
         logger.debug(
             "LLM [task=%s tier=%s model=%s] → %d chars",
@@ -148,7 +168,7 @@ async def generate(
             model_name,
             len(text),
         )
-        return str(text)
+        return text
 
     except Exception as exc:
         logger.error(
@@ -174,7 +194,11 @@ async def generate_json(
         RuntimeError: If generation itself fails.
     """
     raw = await generate(
-        task=task, prompt=prompt, system=system, temperature=0.0, max_tokens=512
+        task=task,
+        prompt=prompt,
+        system=system,
+        temperature=0.0,
+        max_tokens=512,
     )
 
     # Strip markdown code fences (```json ... ```)
@@ -218,26 +242,30 @@ async def generate_stream(
         else settings.llm_cheap_temperature
     )
 
-    genai.configure(api_key=settings.google_api_key)
-    model = genai.GenerativeModel(
-        model_name=model_name,
+    config = genai_types.GenerateContentConfig(
         system_instruction=system,
-        generation_config=genai.types.GenerationConfig(temperature=_temperature),
+        temperature=_temperature,
     )
 
     try:
-        response = await asyncio.to_thread(model.generate_content, prompt, stream=True)
-        for chunk in response:
+        client = _get_client()
+
+        async for chunk in await client.aio.models.generate_content_stream(
+            model=model_name,
+            contents=prompt,
+            config=config,
+        ):
             if chunk.text:
                 yield chunk.text
+
     except Exception as exc:
         logger.error("Stream generation failed [task=%s]: %s", task, exc)
         raise
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 # Convenience wrappers used by specific agents
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 
 
 async def route_message(context: str) -> dict[str, Any]:
