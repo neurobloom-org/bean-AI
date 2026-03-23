@@ -1,0 +1,5 @@
+[lint]
+# W291/W292/W293 — trailing whitespace: handled by ruff format, not lint
+# I001 — import sorting: managed by isort via ruff format, not a lint error
+extend-ignore = ["W291", "W292", "W293", "I001"]
+# No module exclusions — agents/routing/ and all other packages are now linted.
