@@ -17,6 +17,7 @@ Alert threshold semantics:
 
 from __future__ import annotations
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -121,6 +122,7 @@ class Settings(BaseSettings):  # type: ignore[misc]
     frontend_base_url: str = "http://localhost:3000"
     cookie_domain: str | None = None
     oauth_state_secret: str = ""
+    internal_api_key: str = ""
 
     # ── Google OAuth (Calendar) ───────────────────────────────────────────────
     google_oauth_client_id: str = ""
@@ -147,6 +149,46 @@ class Settings(BaseSettings):  # type: ignore[misc]
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @model_validator(mode="after")
+    def validate_required_for_production(self) -> "Settings":
+        if self.environment == "production":
+            required = {
+                "SUPABASE_URL": self.supabase_url,
+                "SUPABASE_SERVICE_ROLE_KEY": self.supabase_service_role_key,
+                "SUPABASE_JWT_SECRET": self.supabase_jwt_secret,
+                "GOOGLE_API_KEY": self.google_api_key or "",
+                "OPENAI_API_KEY": self.openai_api_key,
+                "DEEPGRAM_API_KEY": self.deepgram_api_key,
+                "ELEVENLABS_API_KEY": self.elevenlabs_api_key,
+                "RATE_LIMIT_HASH_SALT": self.rate_limit_hash_salt,
+                "OAUTH_STATE_SECRET": self.oauth_state_secret,
+                "INTERNAL_API_KEY": self.internal_api_key,
+                "CORS_ALLOWED_ORIGINS": self.cors_allowed_origins,
+                "FRONTEND_BASE_URL": self.frontend_base_url,
+                "GOOGLE_OAUTH_REDIRECT_URI": self.google_oauth_redirect_uri,
+            }
+            missing = [k for k, v in required.items() if not v]
+            if missing:
+                raise ValueError(
+                    f"Missing required env vars for production: {', '.join(missing)}"
+                )
+
+            localhost_fields = {
+                "CORS_ALLOWED_ORIGINS": self.cors_allowed_origins,
+                "FRONTEND_BASE_URL": self.frontend_base_url,
+                "GOOGLE_OAUTH_REDIRECT_URI": self.google_oauth_redirect_uri,
+            }
+            invalid_localhost = [
+                k for k, v in localhost_fields.items() if "localhost" in v.lower()
+            ]
+            if invalid_localhost:
+                raise ValueError(
+                    "Production settings must not use localhost values for: "
+                    f"{', '.join(invalid_localhost)}"
+                )
+
+        return self
 
     model_config = {
         "env_file": ".env",

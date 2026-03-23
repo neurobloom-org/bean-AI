@@ -34,7 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
-from google.genai import types as adk_types
+from google.adk.events import Event, EventActions
 
 from services.embedding_service import get_embedding
 from services.llm_service import generate_json
@@ -202,7 +202,7 @@ class MemoryWriterAgent(BaseAgent):
     async def _run_async_impl(
         self,
         ctx: InvocationContext,
-    ) -> AsyncGenerator[adk_types.Content, None]:
+    ) -> AsyncGenerator[Event, None]:
         state = ctx.session.state
 
         user_id_raw = state.get("user_id")
@@ -216,14 +216,18 @@ class MemoryWriterAgent(BaseAgent):
 
         if not user_id:
             logger.debug("MemoryWriter: skipped — missing user_id")
-            state["memory_write_done"] = "skipped"
-            yield adk_types.Content(parts=[])
+            yield Event(
+                author=self.name,
+                actions=EventActions(state_delta={"memory_write_done": "skipped"}),
+            )
             return
 
         if not user_text.strip() and not assistant_text.strip():
             logger.debug("MemoryWriter: skipped — empty turn content")
-            state["memory_write_done"] = "skipped"
-            yield adk_types.Content(parts=[])
+            yield Event(
+                author=self.name,
+                actions=EventActions(state_delta={"memory_write_done": "skipped"}),
+            )
             return
 
         emotion = _sanitize_emotion(raw_emotion)
@@ -252,8 +256,10 @@ class MemoryWriterAgent(BaseAgent):
                 _GATHER_TIMEOUT_S,
                 user_id,
             )
-            state["memory_write_done"] = "error"
-            yield adk_types.Content(parts=[])
+            yield Event(
+                author=self.name,
+                actions=EventActions(state_delta={"memory_write_done": "error"}),
+            )
             return
         except asyncio.CancelledError:
             logger.warning("MemoryWriter: cancelled for user %s", user_id)
@@ -279,12 +285,15 @@ class MemoryWriterAgent(BaseAgent):
                     user_id,
                 )
 
-        state["memory_write_done"] = "error" if had_error else "true"
+        memory_write_done = "error" if had_error else "true"
 
         if not had_error:
             logger.info("MemoryWriter: both tasks succeeded for user %s", user_id)
 
-        yield adk_types.Content(parts=[])
+        yield Event(
+            author=self.name,
+            actions=EventActions(state_delta={"memory_write_done": memory_write_done}),
+        )
 
     # ── Semantic profile ──────────────────────────────────────────────────────
 
@@ -741,7 +750,10 @@ async def _retry_async(
             )
             await asyncio.sleep(delay)
 
-    assert last_exc is not None
+    if last_exc is None:
+        raise RuntimeError(
+            f"_retry_async for '{operation_name}' exhausted retries but last_exc is None"
+        )
     raise last_exc
 
 

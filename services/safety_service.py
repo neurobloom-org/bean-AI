@@ -1,4 +1,4 @@
-"""BEAN AI v5 — Safety / Alert service.
+"""BEAN AI v1 — Safety / Alert service.
 
 Uses Gemini Pro (never Flash) for all safety decisions.
 
@@ -8,6 +8,7 @@ Privacy:
   - SMS to guardian contains only a generic concern notice — no conversation content
 """
 
+import asyncio
 import logging
 import random
 from datetime import UTC, datetime
@@ -138,8 +139,7 @@ class SafetyService:
     ) -> dict[str, Any]:
         """Assess a conversation turn for safety concerns.
 
-        Returns the assessment dict. Automatically creates DB record and
-        sends SMS if alert_level >= high.
+        Returns the assessment dict. Automatically creates DB record.
 
         Privacy: user_text is sent to Gemini Pro but NOT stored.
         Only the resulting alert_level and factors are persisted.
@@ -184,7 +184,15 @@ class SafetyService:
         )
 
         try:
-            assessment = await assess_safety(prompt=prompt, system=SAFETY_SYSTEM)
+            assessment = await asyncio.wait_for(
+                assess_safety(prompt=prompt, system=SAFETY_SYSTEM),
+                timeout=15.0,
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                "Safety LLM assessment timed out after 15s for user %s", user_id
+            )
+            assessment = {"alert_level": "none", "factors": factors}
         except Exception as exc:
             logger.error("Safety LLM assessment failed: %s", exc)
             if has_crisis_keyword:
@@ -234,7 +242,7 @@ class SafetyService:
         alert_level: AlertLevel,
         factors: list[str],
     ) -> str | None:
-        """Persist alert record and trigger SMS if needed."""
+        """Persist alert record only. Guardian SMS dispatch is owned by AlertAgent."""
         client = await get_service_client()
         try:
             result = (
@@ -256,23 +264,6 @@ class SafetyService:
                 alert_level.value,
                 factors,
             )
-
-            if alert_level.requires_sms():
-                await self._notify_guardian(user_id=user_id, alert_level=alert_level)
-                if alert_id:
-                    await (
-                        client.table("alerts")
-                        .update(
-                            {
-                                "notified_guardian": True,
-                                "guardian_notified_at": datetime.now(UTC).isoformat(),
-                                "sms_sent": True,
-                            }
-                        )
-                        .eq("id", alert_id)
-                        .execute()
-                    )
-
             return alert_id
 
         except Exception as exc:

@@ -33,13 +33,7 @@ from services.supabase_client import (
     get_authed_client,
 )
 from shared.config import get_settings
-
-try:
-    # Supabase Python auth errors are wrapped in AuthError according to docs.
-    from gotrue.errors import AuthError
-except Exception:  # pragma: no cover
-    AuthError = Exception
-
+from shared.exceptions import AuthError, TokenExpiredError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -177,7 +171,7 @@ async def get_current_user_id(
     """Validate the bearer token and return user_id."""
     try:
         payload = await decode_supabase_jwt(token)
-    except (AuthError, ValueError) as exc:
+    except (AuthError, TokenExpiredError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),

@@ -106,9 +106,18 @@ async def check_db_health() -> bool:
 async def close_clients() -> None:
     """Release Supabase clients on app shutdown."""
     global _anon_client, _service_client
+    for client, label in (
+        (_anon_client, "anon"),
+        (_service_client, "service"),
+    ):
+        if client is not None:
+            try:
+                await client.aclose()
+            except Exception as exc:
+                logger.warning("Supabase %s client close error: %s", label, exc)
     _anon_client = None
     _service_client = None
-    logger.info("Supabase clients released")
+    logger.info("Supabase clients closed")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

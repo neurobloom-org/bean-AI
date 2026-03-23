@@ -60,6 +60,8 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
+_genai_client: genai.Client | None = None
+
 
 # ── Task → tier mapping ───────────────────────────────────────────────────────
 
@@ -102,20 +104,20 @@ def get_tier(task: str) -> LLMTier:
 
 
 def _get_client() -> genai.Client:
-    """Create a google.genai Client with the configured API key.
-
-    A new Client is created per-call. Client objects are lightweight and
-    stateless; creating per-call avoids thread-safety concerns in async context.
+    """Return a cached google.genai Client configured with the API key.
 
     Raises:
         LLMError: If GOOGLE_API_KEY is not configured.
     """
-    settings = get_settings()
+    global _genai_client
 
-    if not settings.google_api_key:
-        raise LLMError("GOOGLE_API_KEY is not configured — cannot make LLM calls")
+    if _genai_client is None:
+        settings = get_settings()
+        if not settings.google_api_key:
+            raise LLMError("GOOGLE_API_KEY is not configured — cannot make LLM calls")
+        _genai_client = genai.Client(api_key=settings.google_api_key)
 
-    return genai.Client(api_key=settings.google_api_key)
+    return _genai_client
 
 
 # ── Core generation functions ─────────────────────────────────────────────────

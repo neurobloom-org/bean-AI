@@ -48,7 +48,6 @@ class TaskAgent(BaseAgent):
 
         if not transcript:
             response = "What would you like me to help you remember?"
-            ctx.session.state["response_text"] = response
             yield Event(
                 author=self.name,
                 actions=EventActions(state_delta={"response_text": response}),
@@ -65,7 +64,6 @@ class TaskAgent(BaseAgent):
         except Exception as exc:
             logger.error("Task parsing failed: %s", exc)
             response = "I had trouble understanding that. Could you try again?"
-            ctx.session.state["response_text"] = response
             yield Event(
                 author=self.name,
                 actions=EventActions(state_delta={"response_text": response}),
@@ -75,7 +73,6 @@ class TaskAgent(BaseAgent):
         action = parsed.get("action", "unknown")
         response = await self._handle_action(action, parsed, user_id)
 
-        ctx.session.state["response_text"] = response
         logger.info(
             "TaskAgent: action=%s user=%s", action, user_id[:8] if user_id else ""
         )

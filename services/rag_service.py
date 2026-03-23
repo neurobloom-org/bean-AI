@@ -1,4 +1,4 @@
-"""BEAN AI v5 — RAG service for CBT/DBT therapeutic techniques.
+"""BEAN AI v1 — RAG service for CBT/DBT therapeutic techniques.
 
 Retrieves relevant therapeutic techniques from a curated knowledge base
 using vector similarity search. Used exclusively by the TherapyAgent.

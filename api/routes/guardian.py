@@ -336,7 +336,9 @@ async def list_my_patients(
         if not links:
             return GuardianPatientsResponse(patients=[])
 
-        patient_ids = [link["patient_user_id"] for link in links]
+        patient_ids = list(
+            dict.fromkeys(link["patient_user_id"] for link in links)
+        )
         link_map = {link["patient_user_id"]: link for link in links}
 
         profiles_result = (
