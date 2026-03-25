@@ -7,6 +7,7 @@ CHEAP tier (Gemini Flash):
   - Casual conversation      (~$0.0001/turn)
   - Fact extraction          (~$0.00005/turn)
   - Memory similarity query  (~$0.00005/call)
+  - Memory compression       (~$0.00003/call)
   - Task / reminder parsing  (~$0.00003/call)
   - Music selection          (~$0.00002/call)
 
@@ -34,6 +35,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import AsyncGenerator
 from enum import Enum
 from typing import Any
@@ -73,19 +75,22 @@ class LLMTier(str, Enum):
 
 TASK_TIER_MAP: dict[str, LLMTier] = {
     # ── Cheap tier ────────────────────────────────────────────────────────────
-    "routing": LLMTier.CHEAP,
-    "casual_chat": LLMTier.CHEAP,
-    "fact_extraction": LLMTier.CHEAP,
-    "memory_query": LLMTier.CHEAP,
-    "task_management": LLMTier.CHEAP,
-    "music_selection": LLMTier.CHEAP,
-    "emotion_summary": LLMTier.CHEAP,
+    "routing":               LLMTier.CHEAP,
+    "casual_chat":           LLMTier.CHEAP,
+    "fact_extraction":       LLMTier.CHEAP,
+    "memory_query":          LLMTier.CHEAP,
+    "memory_compress":       LLMTier.CHEAP,   # FIX Bug 5: added — used by MemoryWriterAgent
+    "task_management":       LLMTier.CHEAP,
+    "task_draft_extraction": LLMTier.CHEAP,
+    "task_confirmation":     LLMTier.CHEAP,
+    "music_selection":       LLMTier.CHEAP,
+    "emotion_summary":       LLMTier.CHEAP,
     # ── Pro tier ──────────────────────────────────────────────────────────────
-    "therapeutic_chat": LLMTier.PRO,
-    "safety_analysis": LLMTier.PRO,
-    "alert_assessment": LLMTier.PRO,
-    "active_listening": LLMTier.PRO,
-    "crisis_response": LLMTier.PRO,
+    "therapeutic_chat":  LLMTier.PRO,
+    "safety_analysis":   LLMTier.PRO,
+    "alert_assessment":  LLMTier.PRO,
+    "active_listening":  LLMTier.PRO,
+    "crisis_response":   LLMTier.PRO,
 }
 
 
@@ -180,7 +185,6 @@ async def generate(
     try:
         client = _get_client()
 
-        # client.aio is the async interface — no asyncio.to_thread() needed.
         response = await client.aio.models.generate_content(
             model=model_name,
             contents=prompt,
@@ -242,13 +246,8 @@ async def generate_json(
     )
 
     # Strip markdown code fences the model may wrap the JSON in.
-    cleaned = raw
-    if cleaned.startswith("```"):
-        parts = cleaned.split("```")
-        cleaned = parts[1] if len(parts) > 1 else cleaned
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
-    cleaned = cleaned.strip()
+    cleaned = re.sub(r"^\s*```(?:json)?\s*", "", raw.strip())
+    cleaned = re.sub(r"\s*```\s*$", "", cleaned).strip()
 
     try:
         return dict(json.loads(cleaned))
@@ -303,14 +302,11 @@ async def generate_stream(
     try:
         client = _get_client()
 
-        # generate_content_stream is an async generator function — calling it
-        # returns the async generator directly. Do NOT await it.
-        stream = await client.aio.models.generate_content_stream(
+        async for chunk in client.aio.models.generate_content_stream(
             model=model_name,
             contents=prompt,
             config=config,
-        )
-        async for chunk in stream:
+        ):
             if chunk.text:
                 yield chunk.text
 
