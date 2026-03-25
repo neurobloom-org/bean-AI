@@ -131,6 +131,11 @@ User message:
 Detected emotion: {emotion}
 Turn number: {turn_number}
 Recent route distribution: {route_distribution}
+
+MUSIC STATE: {music_playing}
+If music_playing is true and the user says anything about stopping, skipping, 
+next song, volume, or music in general → route = "music".
+If music_playing is true and user says something emotional/personal → route stays as normal (music will be stopped by orchestrator).
 """
 
 
@@ -490,7 +495,11 @@ class RoutingAgent(BaseAgent):
 
         # ── LLM classification with retry ─────────────────────────────────────
         t0 = time.perf_counter()
-        decision, diagnostics = await self._classify_with_retry(inputs=inputs, log=log)
+        decision, diagnostics = await self._classify_with_retry(
+            inputs=inputs,
+            log=log,
+            state=state,
+        )
         latency_ms = round((time.perf_counter() - t0) * 1000, 1)
 
         log.info(
@@ -522,6 +531,7 @@ class RoutingAgent(BaseAgent):
         *,
         inputs: _SessionInputs,
         log: _SessionLoggerAdapter,
+        state: _SessionState,
     ) -> tuple[_RoutingDecision, _RoutingDiagnostics]:
         """Call the routing LLM with timeout, Pydantic validation, and retry.
 
@@ -534,6 +544,7 @@ class RoutingAgent(BaseAgent):
             emotion=inputs.emotion,
             turn_number=inputs.turn_number,
             route_distribution=_serialize_route_distribution(inputs.route_distribution),
+            music_playing=str(state.get("music_playing_mood") is not None).lower(),
         )
 
         total_attempts = 1 + MAX_LLM_RETRIES
