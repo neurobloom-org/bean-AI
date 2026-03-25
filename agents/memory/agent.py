@@ -1,5 +1,18 @@
 """BEAN AI v5 — Memory Agent.
 
+NOTE: This module is kept for forward-compatibility but MemoryAgent is NOT
+called by the orchestrator at runtime. The orchestrator uses its own inline
+_fetch_memory_context() method which performs the same profile + episodic
+lookups without the overhead of an ADK sub-agent round-trip.
+
+If you want to activate MemoryAgent in the pipeline, call _run_sub_agent()
+with memory_agent inside BEANOrchestrator._dispatch() before the response
+sub-agent runs, and remove the inline _fetch_memory_context() call.
+
+The full implementation with circuit breakers, retry logic, fallback episodic
+query, and structured SourceResult diagnostics is preserved below and can be
+activated without any other changes.
+
 Fetches context from three sources in parallel:
   1. Recent transcript turns    — session_transcripts table (24-h TTL)
   2. Semantic profile           — user_profiles table
@@ -53,7 +66,7 @@ _RETRY_ATTEMPTS: int = 3
 _RETRY_BASE_DELAY_SECONDS: float = 0.35
 _RETRY_MAX_DELAY_SECONDS: float = 2.0
 
-# FIX: raised from 10 → 20. Breakers are shared across all concurrent users
+# Raised from 10 → 20. Breakers are shared across all concurrent users
 # (if Supabase is down, it is down for everyone — that is intentional).
 # A threshold of 10 means one unlucky session can trip the breaker for all
 # other users. 20 accounts for realistic concurrent traffic.
@@ -258,6 +271,9 @@ class MemoryAgent(BaseAgent):
 
     Accepts injected service dependencies so tests can pass mock implementations
     without patching module globals.
+
+    NOTE: This agent is not currently wired into the orchestrator pipeline.
+    The orchestrator calls _fetch_memory_context() directly. See module docstring.
     """
 
     model_config = {"arbitrary_types_allowed": True}
@@ -266,10 +282,8 @@ class MemoryAgent(BaseAgent):
         self,
         *,
         name: str,
-        # FIX: privacy_service removed from top-level import and resolved here
-        # via a deferred local import. A top-level import risks a circular import
-        # at startup depending on Python's module initialisation order.
-        # Passing a mock in tests still works — just pass privacy_client= directly.
+        # privacy_service resolved via deferred local import to avoid circular
+        # imports at startup. Passing a mock in tests still works via privacy_client=.
         privacy_client: PrivacyClientProtocol | None = None,
         user_profile_fetcher: UserProfileFetcherProtocol | None = None,
         episodic_searcher: EpisodicSearchProtocol | None = None,
@@ -278,19 +292,14 @@ class MemoryAgent(BaseAgent):
 
         if privacy_client is None:
             from services.privacy_service import privacy_service as _ps
-
             privacy_client = _ps
 
         self._privacy_client: PrivacyClientProtocol = privacy_client
         self._user_profile_fetcher: UserProfileFetcherProtocol = (
-            user_profile_fetcher
-            if user_profile_fetcher is not None
-            else get_user_profile
+            user_profile_fetcher if user_profile_fetcher is not None else get_user_profile
         )
         self._episodic_searcher: EpisodicSearchProtocol = (
-            episodic_searcher
-            if episodic_searcher is not None
-            else search_similar_memories
+            episodic_searcher if episodic_searcher is not None else search_similar_memories
         )
 
         self._circuit_breakers: dict[str, CircuitBreaker] = {
@@ -341,15 +350,10 @@ class MemoryAgent(BaseAgent):
             )
             return
 
-        # FIX: replaced asyncio.TaskGroup with asyncio.gather(return_exceptions=True).
-        #
-        # TaskGroup cancels ALL sibling tasks the moment any one of them raises —
-        # the exact opposite of what we need here. If the profile fetch times out,
-        # we still want working memory and episodic results to complete and return
-        # partial context to the user.
-        #
-        # gather(return_exceptions=True) keeps every fetch fully independent.
-        # DO NOT switch this back to TaskGroup.
+        # Use gather(return_exceptions=True) — NOT TaskGroup.
+        # TaskGroup cancels ALL sibling tasks the moment any one raises.
+        # gather keeps every fetch fully independent so a profile timeout
+        # doesn't discard working memory and episodic results.
         raw_results = await asyncio.gather(
             self._fetch_working_memory(session_id=session_id, user_id=user_id),
             self._fetch_user_profile(user_id=user_id, session_id=session_id),
@@ -361,7 +365,6 @@ class MemoryAgent(BaseAgent):
             return_exceptions=True,
         )
 
-        # Each slot is either a (data, SourceResult) tuple or a BaseException.
         working_memory, working_meta = self._unpack_gather_slot(
             raw_results[0], label="working_memory", empty=[]
         )
@@ -384,8 +387,6 @@ class MemoryAgent(BaseAgent):
                     source_label="episodic_memories_fallback",
                     timeout_seconds=_FALLBACK_EPISODIC_TIMEOUT_SECONDS,
                 )
-                # _fetch_episodic_memories always returns a tuple because it has
-                # its own internal retry wrapper — it never raises to the caller.
                 if not isinstance(fallback_raw, BaseException):
                     episodic_fallback, episodic_fallback_meta = fallback_raw
                     if episodic_fallback:
@@ -441,12 +442,6 @@ class MemoryAgent(BaseAgent):
         memory_context: str,
         memory_system_status: str,
     ) -> Event:
-        # NOTE TO TEAM: this writes two session.state keys — memory_context
-        # (original spec) and memory_system_status (new, added with this upgrade).
-        # memory_system_status values: "ok" | "degraded_partial_failure" |
-        # "degraded_all_sources_failed" | "skipped_missing_user_id".
-        # The orchestrator and other agents can read this for observability but
-        # must not depend on it for core routing logic.
         return Event(
             author=self.name,
             actions=EventActions(
@@ -484,16 +479,11 @@ class MemoryAgent(BaseAgent):
             for row in rows:
                 try:
                     raw = RawWorkingMemoryRow.model_validate(row)
-                    parsed.append(
-                        WorkingMemoryEntry(speaker=raw.speaker, text=raw.text)
-                    )
+                    parsed.append(WorkingMemoryEntry(speaker=raw.speaker, text=raw.text))
                 except ValidationError:
                     logger.warning(
                         "MemoryAgent: invalid working memory row skipped",
-                        extra={
-                            "memory_source": "working_memory",
-                            "session_id": session_id,
-                        },
+                        extra={"memory_source": "working_memory", "session_id": session_id},
                     )
             return parsed
 
@@ -592,8 +582,6 @@ class MemoryAgent(BaseAgent):
         timeout_seconds: float,
         operation: Callable[[], Awaitable[Any]],
     ) -> tuple[Any, SourceResult]:
-        # FIX: use .get() so an unknown label never raises KeyError and bypasses
-        # all retry/fallback logic. Proceeds unguarded with a logged error instead.
         breaker = self._circuit_breakers.get(label)
         if breaker is None:
             logger.error(
@@ -655,7 +643,6 @@ class MemoryAgent(BaseAgent):
                 )
 
             except asyncio.CancelledError:
-                # Never swallow CancelledError — propagate immediately.
                 raise
 
             except asyncio.TimeoutError:
@@ -796,10 +783,6 @@ class MemoryAgent(BaseAgent):
         label: str,
         empty: Any,
     ) -> tuple[Any, SourceResult]:
-        """Unpack one slot from asyncio.gather(return_exceptions=True).
-        Returns either the coroutine's (data, SourceResult) tuple, or
-        the safe empty fallback if the slot holds a BaseException.
-        """
         if isinstance(raw, BaseException):
             logger.error(
                 "MemoryAgent: %s raised an unhandled exception outside retry wrapper: %s",
