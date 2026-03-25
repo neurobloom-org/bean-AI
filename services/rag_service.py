@@ -111,6 +111,65 @@ async def retrieve_cbt_techniques(
         return _FALLBACK_TECHNIQUES[:limit]
 
 
+async def hybrid_search_techniques(
+    user_text: str,
+    top_k: int = 5,
+) -> list[dict]:
+    """Hybrid semantic + keyword search over rag_techniques.
+
+    Steps:
+    1. Semantic: embed user_text → cosine similarity via pgvector
+    2. Keyword:  simple ilike match on name + description
+    3. Merge + deduplicate, re-rank by combined score
+    """
+    # FIX Bug 3: embed_text does not exist in embedding_service — use get_embedding
+    embedding = await get_embedding(user_text)
+    client = await get_service_client()
+
+    # -- Semantic results --
+    # FIX Bug 8: align RPC param names to the p_ prefix convention used everywhere
+    # else in this project (was: query_embedding / match_threshold / match_count)
+    semantic_result = await client.rpc(
+        "search_rag_techniques",
+        {
+            "p_query_embedding": embedding,
+            "p_min_similarity": 0.65,
+            "p_limit": top_k * 2,
+        },
+    ).execute()
+    semantic_rows = {
+        r["id"]: {**r, "_score": float(r.get("similarity", 0))}
+        for r in (semantic_result.data or [])
+    }
+
+    # -- Keyword results --
+    keywords = [w for w in user_text.lower().split() if len(w) > 3]
+    keyword_rows: dict[str, dict] = {}
+    if keywords:
+        kw_query = " | ".join(keywords[:5])
+        try:
+            kw_result = await client.table("rag_techniques") \
+                .select("id, name, description, example, category") \
+                .text_search("name_description_tsv", kw_query) \
+                .limit(top_k * 2) \
+                .execute()
+            for r in (kw_result.data or []):
+                keyword_rows[r["id"]] = {**r, "_score": 0.5}
+        except Exception:
+            pass  # Keyword search is best-effort
+
+    # -- Merge + re-rank --
+    merged: dict[str, dict] = {**keyword_rows}
+    for rid, row in semantic_rows.items():
+        if rid in merged:
+            merged[rid]["_score"] = merged[rid]["_score"] + row["_score"]
+        else:
+            merged[rid] = row
+
+    ranked = sorted(merged.values(), key=lambda r: r["_score"], reverse=True)
+    return ranked[:top_k]
+
+
 def format_techniques_for_prompt(techniques: list[dict[str, Any]]) -> str:
     """Format retrieved techniques into a readable prompt block.
 
