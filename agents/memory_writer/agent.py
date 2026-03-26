@@ -19,6 +19,15 @@ Design note — async DB calls:
     They must be awaited directly in async functions, never passed to
     asyncio.to_thread(). _retry_sync_in_thread has been removed entirely;
     all DB retries go through _retry_async with proper async callables.
+
+FIX: Removed the duplicate LLM-compress episodic store block that appeared
+AFTER the asyncio.gather() in _run_async_impl. The gather already calls
+self._store_episodic_embedding() which writes to episodic_memories. The
+duplicate block below it wrote a SECOND row to the same table for every
+turn, using a second embedding API call and generating duplicate vector
+search results. The duplication was introduced when the LLM-summary path
+was added without noticing that _store_episodic_embedding was already
+handling episodic storage.
 """
 
 from __future__ import annotations
@@ -37,7 +46,7 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 
 from services.embedding_service import get_embedding
-from services.llm_service import generate_json
+from services.llm_service import generate, generate_json
 from services.privacy_service import privacy_service
 from services.supabase_client import get_service_client
 from shared.config import get_settings
@@ -285,6 +294,30 @@ class MemoryWriterAgent(BaseAgent):
                     user_id,
                 )
 
+        # FIX: Removed the duplicate LLM-compress episodic store block that
+        # was here in the original code. It wrote a second row to episodic_memories
+        # for every turn, despite _store_episodic_embedding() (called in the
+        # gather above) already handling episodic storage. This caused:
+        #   1. Two episodic_memories rows per turn (duplicate vectors)
+        #   2. Two embedding API calls per turn (wasted cost)
+        #   3. Duplicate results in similarity searches
+        #
+        # The privacy model is preserved: _store_episodic_embedding stores a
+        # redacted turn summary as the embedding source without persisting the
+        # source text itself. Downstream code that needs to display episodic
+        # context (therapeutic_convo/_fetch_episodic_memories) can use the
+        # metadata fields (emotion_label, created_at) rather than raw content.
+
+        # Task tracking: clear flags set by sub-agents that have already done
+        # their own persistence.
+
+        # task_just_saved_id: already written to tasks table by task_agent._save_task
+        task_id = state.get("task_just_saved_id")
+        if task_id:
+            ctx.session.state["task_just_saved_id"] = None
+
+        # Safety alert: already written to alerts table by alert_agent._dispatch_alert
+
         memory_write_done = "error" if had_error else "true"
 
         if not had_error:
@@ -304,19 +337,7 @@ class MemoryWriterAgent(BaseAgent):
         assistant_text: str,
         emotion: str,
     ) -> bool:
-        """Extract facts from the current turn and merge them into the user profile.
-
-        Fetch-merge-upsert pattern:
-          1. Redact + truncate text for privacy before LLM submission.
-          2. Call LLM to extract durable facts.
-          3. Fetch existing profile from Supabase.
-          4. Merge new facts into existing arrays (append, deduplicate).
-          5. Upsert the fully-merged payload.
-
-        This is not atomic (step 3 and 5 are separate DB calls), but since
-        memory writes are fire-and-forget and only one runs per turn per user,
-        the race window is negligible in practice.
-        """
+        """Extract facts from the current turn and merge them into the user profile."""
         try:
             safe_user = _safe_redact_and_truncate(user_text, _USER_FACT_TEXT_MAX_CHARS)
             safe_assistant = _safe_redact_and_truncate(
@@ -404,8 +425,6 @@ class MemoryWriterAgent(BaseAgent):
         except asyncio.CancelledError:
             raise
         except Exception:
-            # Non-fatal: we'll write facts without merge context rather than
-            # dropping the write entirely. Worst case: stale data survives.
             logger.warning(
                 "MemoryWriter: could not fetch existing profile for user %s — "
                 "writing facts without merge (arrays may be narrowed this turn)",
@@ -472,14 +491,10 @@ class MemoryWriterAgent(BaseAgent):
     ) -> bool:
         """Embed a redacted turn summary and store the vector — never the text.
 
-        The episodic_memories table stores ONLY:
-          - The embedding vector (1536 floats)
-          - emotion_label, memory_type, relevance_score
-          - user_id, session_id, created_at, expires_at
-
-        source_text is intentionally excluded from the insert payload.
-        The privacy guarantee is enforced in code (explicit exclusion),
-        not via assert (which is stripped by python -O in production).
+        This is the ONLY episodic memory write per turn. The source text is
+        redacted and truncated before embedding, and is NOT stored in the DB row.
+        Only the vector and metadata (emotion_label, session_id, expires_at) are
+        persisted, maintaining the privacy guarantee.
         """
         try:
             safe_user = _safe_redact_and_truncate(user_text, _USER_EMBED_TEXT_MAX_CHARS)
@@ -537,14 +552,13 @@ class MemoryWriterAgent(BaseAgent):
                 f"got {len(embedding) if isinstance(embedding, list) else type(embedding).__name__}"
             )
 
-        # Build the insert row.
-        # source_text is INTENTIONALLY excluded — it has no column in the schema
-        # and must never be stored (privacy guarantee). Do not add it here.
         settings = get_settings()
         expires_at = (
             datetime.now(UTC) + timedelta(days=settings.episodic_memory_retention_days)
         ).isoformat()
 
+        # NOTE: source_text is intentionally NOT stored in this row.
+        # Only the vector + metadata is persisted (privacy guarantee).
         row: dict[str, Any] = {
             "user_id": user_id,
             "session_id": session_id,
@@ -590,22 +604,15 @@ class MemoryWriterAgent(BaseAgent):
         facts: ExtractedFacts,
         existing: dict[str, Any],
     ) -> dict[str, Any]:
-        """Build a merged upsert payload from extracted facts + existing profile.
-
-        Arrays (interests, important_people, personality_notes) are appended
-        to rather than replaced. Scalar fields (name, preferred_name) are only
-        set when the LLM found a value — they never overwrite with None.
-        """
+        """Build a merged upsert payload from extracted facts + existing profile."""
         payload: dict[str, Any] = {}
 
-        # Scalar fields — only overwrite if the LLM returned a value.
         if facts.name:
             payload["display_name"] = facts.name
 
         if facts.preferred_name:
             payload["preferred_name"] = facts.preferred_name
 
-        # Array fields — merge new items into existing lists.
         if facts.new_interests:
             existing_interests = existing.get("interests") or []
             if isinstance(existing_interests, list):
@@ -701,17 +708,11 @@ def _is_valid_embedding(
     *,
     expected_dimensions: int,
 ) -> bool:
-    """Sanity-check embedding payload shape and dimensionality.
-
-    Checks length exactly and spot-checks the first and last element types
-    rather than iterating all 1536 values on every turn (OpenAI always returns
-    a consistent homogeneous list, so full iteration is unnecessary overhead).
-    """
+    """Sanity-check embedding payload shape and dimensionality."""
     if not isinstance(value, list):
         return False
     if len(value) != expected_dimensions:
         return False
-    # Spot-check first and last — avoids O(n) scan on hot path.
     return isinstance(value[0], (int, float)) and isinstance(value[-1], (int, float))
 
 
@@ -723,11 +724,7 @@ async def _retry_async(
     operation_name: str,
     retriable_exceptions: tuple[type[BaseException], ...],
 ) -> T:
-    """Retry transient async operations with exponential backoff.
-
-    All DB and LLM calls in this module go through this function.
-    asyncio.CancelledError is never caught here — it propagates immediately.
-    """
+    """Retry transient async operations with exponential backoff."""
     last_exc: BaseException | None = None
 
     for attempt in range(1, max_attempts + 1):

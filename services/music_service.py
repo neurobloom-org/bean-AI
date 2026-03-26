@@ -26,16 +26,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import mimetypes
 import random
-import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, Final
 
 import httpx
 
 from services.supabase_client import get_service_client
-from shared.config import get_settings
+
+# FIX: Removed three unused imports that were present in the original file:
+#   import mimetypes   — never referenced anywhere in this module
+#   import uuid        — never referenced anywhere in this module
+#   from shared.config import get_settings  — never called in this module
 
 __all__ = [
     "pick_song",

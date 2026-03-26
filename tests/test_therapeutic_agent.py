@@ -77,7 +77,7 @@ class TestRetrieveRagContext:
         agent = TherapeuticConvoAgent(name="test_therapy")
         fake_techniques = [{"name": "Active Listening", "description": "Reflect feelings"}]
 
-        with patch("agents.therapeutic_convo.agent.retrieve_cbt_techniques", new_callable=AsyncMock, return_value=fake_techniques):
+        with patch("agents.therapeutic_convo.agent.hybrid_search_techniques", new_callable=AsyncMock, return_value=fake_techniques):
             with patch("agents.therapeutic_convo.agent.format_techniques_for_prompt", return_value="Use active listening"):
                 context, techniques = await agent._retrieve_rag_context("I feel sad", "sad")
 
@@ -88,7 +88,7 @@ class TestRetrieveRagContext:
     async def test_timeout_returns_fallback(self):
         agent = TherapeuticConvoAgent(name="test_therapy")
 
-        with patch("agents.therapeutic_convo.agent.retrieve_cbt_techniques", new_callable=AsyncMock, side_effect=asyncio.TimeoutError()):
+        with patch("agents.therapeutic_convo.agent.hybrid_search_techniques", new_callable=AsyncMock, side_effect=asyncio.TimeoutError()):
             context, techniques = await agent._retrieve_rag_context("I feel sad", "sad")
 
         assert context == _FALLBACK_RAG_CONTEXT
@@ -98,7 +98,7 @@ class TestRetrieveRagContext:
     async def test_exception_returns_fallback(self):
         agent = TherapeuticConvoAgent(name="test_therapy")
 
-        with patch("agents.therapeutic_convo.agent.retrieve_cbt_techniques", new_callable=AsyncMock, side_effect=RuntimeError("DB down")):
+        with patch("agents.therapeutic_convo.agent.hybrid_search_techniques", new_callable=AsyncMock, side_effect=RuntimeError("DB down")):
             context, techniques = await agent._retrieve_rag_context("I feel sad", "sad")
 
         assert context == _FALLBACK_RAG_CONTEXT
@@ -159,7 +159,7 @@ class TestTherapeuticAgentImpl:
             "is_minor": True,
         }
 
-        with patch("agents.therapeutic_convo.agent.retrieve_cbt_techniques", new_callable=AsyncMock, return_value=[]):
+        with patch("agents.therapeutic_convo.agent.hybrid_search_techniques", new_callable=AsyncMock, return_value=[]):
             with patch("agents.therapeutic_convo.agent.format_techniques_for_prompt", return_value="Use validation"):
                 with patch("agents.therapeutic_convo.agent.llm_generate", new_callable=AsyncMock, return_value="I can hear how stressed you are."):
                     result = await _run_agent(state)
@@ -175,7 +175,7 @@ class TestTherapeuticAgentImpl:
             "is_minor": False,
         }
 
-        with patch("agents.therapeutic_convo.agent.retrieve_cbt_techniques", new_callable=AsyncMock, return_value=[]):
+        with patch("agents.therapeutic_convo.agent.hybrid_search_techniques", new_callable=AsyncMock, return_value=[]):
             with patch("agents.therapeutic_convo.agent.format_techniques_for_prompt", return_value=""):
                 with patch("agents.therapeutic_convo.agent.llm_generate", new_callable=AsyncMock, return_value="I'm here with you."):
                     result = await _run_agent(state)

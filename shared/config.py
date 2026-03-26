@@ -75,6 +75,12 @@ class Settings(BaseSettings):  # type: ignore[misc]
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
 
+    # ── Redis ─────────────────────────────────────────────────────────────────
+    redis_url: str = "redis://localhost:6379"
+
+    # ── Conversation cache ────────────────────────────────────────────────────
+    conversation_history_size: int = 10
+
     # ── Privacy & Data Retention ──────────────────────────────────────────────
     transcript_retention_hours: int = 24
     emotion_retention_days: int = 90
@@ -83,15 +89,9 @@ class Settings(BaseSettings):  # type: ignore[misc]
     session_metadata_retention_days: int = 730
 
     # ── Safety ────────────────────────────────────────────────────────────────
-    # Number of active safety factors required to reach AlertLevel.HIGH.
-    # Adults need 3 of 5 factors; minors need only 2 because F4 (vulnerability)
-    # is always pre-counted for them, so they effectively start at 1.
-    alert_threshold: int = 3  # adult trigger point
-    minor_alert_threshold: int = 2  # minor trigger point (was wrongly 3 before)
+    alert_threshold: int = 3
+    minor_alert_threshold: int = 2
 
-    # Minimum seconds between guardian SMS alerts for the same user.
-    # Prevents alert spam during long sessions with sustained crisis signals.
-    # Reserved for future use — not yet implemented in AlertAgent.
     guardian_alert_cooldown_seconds: int = 300
 
     # ── Rate Limiting ─────────────────────────────────────────────────────────
@@ -133,17 +133,14 @@ class Settings(BaseSettings):  # type: ignore[misc]
 
     @property
     def gemini_flash_model(self) -> str:
-        """Alias for llm_cheap_model (used by LlmAgent definitions)."""
         return self.llm_cheap_model
 
     @property
     def gemini_pro_model(self) -> str:
-        """Alias for llm_pro_model (used by LlmAgent definitions)."""
         return self.llm_pro_model
 
     @property
     def cors_origins_list(self) -> list[str]:
-        """Return CORS origins as a list, split on commas."""
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
     @property
@@ -208,6 +205,5 @@ def get_settings() -> Settings:
 
 
 def reset_settings() -> None:
-    """Reset the cached settings singleton. Used in tests."""
     global _settings
     _settings = None
