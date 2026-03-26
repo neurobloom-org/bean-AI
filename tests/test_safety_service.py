@@ -22,7 +22,6 @@ sys.modules["google.adk.tools"] = MagicMock()
 sys.modules["twilio"] = MagicMock()
 sys.modules["twilio.rest"] = MagicMock()
 sys.modules["supabase"] = MagicMock()
-sys.modules["pydantic_settings"] = MagicMock()
 
 import pytest
 
