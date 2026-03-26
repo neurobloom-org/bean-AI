@@ -2,7 +2,7 @@
 ALTER TABLE public.rag_techniques
     ADD COLUMN IF NOT EXISTS name_description_tsv tsvector
         GENERATED ALWAYS AS (
-            to_tsvector('english', coalesce(name, '') || ' ' || coalesce(description, ''))
+            to_tsvector('english', coalesce(technique_name, '') || ' ' || coalesce(content, ''))
         ) STORED;
 
 CREATE INDEX IF NOT EXISTS idx_rag_techniques_tsv

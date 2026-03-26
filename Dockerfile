@@ -34,9 +34,10 @@ COPY . .
 RUN pip install --no-cache-dir uv && \
     python -m venv /venv && \
     /venv/bin/pip install --no-cache-dir uv && \
-    /venv/bin/uv pip install --no-cache-dir \
+    VIRTUAL_ENV=/venv /venv/bin/uv pip install --no-cache-dir \
         --extra-index-url https://download.pytorch.org/whl/cpu \
         "."
+        
 
 # ── Stage 2: Development ──────────────────────────────────────────────────────
 FROM python:3.12-slim AS development
