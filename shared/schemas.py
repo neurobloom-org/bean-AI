@@ -186,7 +186,7 @@ class FillerPhraseResult(BaseModel):
 
     phrase: str
     audio_cache_key: str
-    audio_b64: str | None = None  # pre-cached TTS audio if available
+    audio_b64: str | None = None
 
 
 class FillerAudioMessage(BaseModel):
@@ -195,9 +195,7 @@ class FillerAudioMessage(BaseModel):
 
 
 class MusicCommand(BaseModel):
-    """Music command sent to ESP32 hardware."""
-
-    action: str  # MusicAction enum value
+    action: str
     genre_folder: str | None = None
     shuffle: bool = True
     volume: int | None = None
@@ -342,6 +340,8 @@ class HealthResponse(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 # Guardian / doctor API
 # ─────────────────────────────────────────────────────────────────────────────
+
+
 class GuardianLinkCreate(BaseModel):
     guardian_user_id: UUID
     relationship: Literal["guardian", "doctor", "parent", "caregiver"] = "guardian"
@@ -380,9 +380,26 @@ class PurgeResult(BaseModel):
 
 
 class TTSChunk(BaseModel):
-    """Audio chunk streamed from ElevenLabs TTS to ESP32."""
-
     type: Literal["response_audio"] = "response_audio"
     audio_chunk: bytes
     is_final: bool = False
     turn_id: str
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Conversation cache / Task draft (NEW)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ConversationTurn(BaseModel):
+    role: str
+    text: str
+    ts: str
+
+
+class TaskDraft(BaseModel):
+    title: str
+    description: str | None = None
+    due_at: str | None = None
+    reminder_at: str | None = None
+    correction_count: int = 0

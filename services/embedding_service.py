@@ -1,4 +1,4 @@
-"""BEAN AI v5 — Embedding service (OpenAI text-embedding-3-small).
+"""BEAN AI v1 — Embedding service (OpenAI text-embedding-3-small).
 
 Used exclusively for episodic memory vector generation.
 
@@ -26,6 +26,8 @@ def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
         settings = get_settings()
+        if not settings.openai_api_key:
+            raise EmbeddingError("OPENAI_API_KEY is not configured")
         _client = AsyncOpenAI(api_key=settings.openai_api_key)
     return _client
 

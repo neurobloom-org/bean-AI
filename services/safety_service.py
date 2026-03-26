@@ -1,4 +1,4 @@
-"""BEAN AI v5 — Safety / Alert service.
+"""BEAN AI v1 — Safety / Alert service.
 
 Uses Gemini Pro (never Flash) for all safety decisions.
 
@@ -8,14 +8,13 @@ Privacy:
   - SMS to guardian contains only a generic concern notice — no conversation content
 """
 
+import asyncio
 import logging
 import random
-from datetime import UTC, datetime
 from typing import Any
 
 from services.llm_service import assess_safety
 from services.supabase_client import get_service_client
-from services.twilio_service import send_guardian_sms
 from shared.enums import AlertFactor, AlertLevel, EmotionLabel
 from shared.exceptions import CrisisDetectedError
 
@@ -124,7 +123,14 @@ def get_post_alert_message() -> str:
 
 
 class SafetyService:
-    """Safety assessment and alert escalation."""
+    """Safety assessment and alert escalation.
+
+    Guardian SMS dispatch is owned exclusively by AlertAgent._dispatch_alert().
+    This service is responsible for:
+      - LLM-based safety assessment (Gemini Pro)
+      - Persisting alert records to the DB
+      - Raising CrisisDetectedError for CRISIS-level events
+    """
 
     async def assess_turn(
         self,
@@ -138,8 +144,7 @@ class SafetyService:
     ) -> dict[str, Any]:
         """Assess a conversation turn for safety concerns.
 
-        Returns the assessment dict. Automatically creates DB record and
-        sends SMS if alert_level >= high.
+        Returns the assessment dict. Automatically creates DB record.
 
         Privacy: user_text is sent to Gemini Pro but NOT stored.
         Only the resulting alert_level and factors are persisted.
@@ -184,7 +189,15 @@ class SafetyService:
         )
 
         try:
-            assessment = await assess_safety(prompt=prompt, system=SAFETY_SYSTEM)
+            assessment = await asyncio.wait_for(
+                assess_safety(prompt=prompt, system=SAFETY_SYSTEM),
+                timeout=15.0,
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                "Safety LLM assessment timed out after 15s for user %s", user_id
+            )
+            assessment = {"alert_level": "none", "factors": factors}
         except Exception as exc:
             logger.error("Safety LLM assessment failed: %s", exc)
             if has_crisis_keyword:
@@ -234,7 +247,7 @@ class SafetyService:
         alert_level: AlertLevel,
         factors: list[str],
     ) -> str | None:
-        """Persist alert record and trigger SMS if needed."""
+        """Persist alert record only. Guardian SMS dispatch is owned by AlertAgent."""
         client = await get_service_client()
         try:
             result = (
@@ -256,86 +269,11 @@ class SafetyService:
                 alert_level.value,
                 factors,
             )
-
-            if alert_level.requires_sms():
-                await self._notify_guardian(user_id=user_id, alert_level=alert_level)
-                if alert_id:
-                    await (
-                        client.table("alerts")
-                        .update(
-                            {
-                                "notified_guardian": True,
-                                "guardian_notified_at": datetime.now(UTC).isoformat(),
-                                "sms_sent": True,
-                            }
-                        )
-                        .eq("id", alert_id)
-                        .execute()
-                    )
-
             return alert_id
 
         except Exception as exc:
             logger.error("Failed to create alert record: %s", exc)
             return None
-
-    async def _notify_guardian(self, user_id: str, alert_level: AlertLevel) -> None:
-        """Send privacy-safe SMS to the user's guardian/doctor."""
-        try:
-            client = await get_service_client()
-
-            guardian_result = (
-                await client.table("guardian_links")
-                .select("guardian_user_id, patient_user_id")
-                .eq("patient_user_id", user_id)
-                .eq("can_view_alerts", True)
-                .execute()
-            )
-
-            if not guardian_result.data:
-                logger.warning("No guardian found for user %s", user_id)
-                return
-
-            profile_result = (
-                await client.table("user_profiles")
-                .select("display_name")
-                .eq("user_id", user_id)
-                .maybe_single()
-                .execute()
-            )
-            name = (profile_result.data or {}).get("display_name") or "your patient"
-
-            if alert_level == AlertLevel.CRISIS:
-                body = (
-                    f"⚠️ BEAN AI URGENT: {name} may need immediate support. "
-                    f"Please check in with them now or contact emergency services if needed."
-                )
-            else:
-                body = (
-                    f"BEAN AI: {name} may benefit from extra support today. "
-                    f"Consider checking in when you can."
-                )
-
-            for link in guardian_result.data:
-                guardian_id = link["guardian_user_id"]
-                try:
-                    guardian_auth = await client.auth.admin.get_user_by_id(guardian_id)
-                    phone = (guardian_auth.user.user_metadata or {}).get("phone")
-                    if phone:
-                        await send_guardian_sms(to=phone, body=body)
-                        logger.info(
-                            "SMS sent to guardian %s for user %s [level=%s]",
-                            guardian_id[:8],
-                            user_id[:8],
-                            alert_level.value,
-                        )
-                except Exception as exc:
-                    logger.error(
-                        "Failed to notify guardian %s: %s", guardian_id[:8], exc
-                    )
-
-        except Exception as exc:
-            logger.error("Guardian notification failed: %s", exc)
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────

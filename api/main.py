@@ -1,18 +1,4 @@
-"""BEAN AI v1 — FastAPI application entry point.
-
-Lifespan contract:
-  Startup  — DB health check → background tasks → ready
-  Shutdown — cancel tasks → close HTTP clients → close Supabase clients
-
-Background jobs (all started as asyncio.Task):
-  transcript-purge   — purge expired transcripts, memories, TTS cache, rate-limits
-  session-cleanup    — expire/delete stale sessions
-  reminder-check     — send SMS reminders for due tasks
-  emotion-purge      — age-based deletion of emotion_events (owned here exclusively)
-
-Internal routes:
-  POST /internal/purge — admin-only full purge sweep; requires X-Internal-Key header.
-"""
+"""BEAN AI v1 — FastAPI application entry point."""
 
 from __future__ import annotations
 
@@ -21,18 +7,16 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.middleware.auth_middleware import SupabaseAuthMiddleware
 from api.middleware.rate_limiter import RateLimiterMiddleware
-from api.routes import alerts, auth, emotions, guardian, health, sessions, tasks
 from api.websocket_handler import router as ws_router
 from background.emotion_purge import run_emotion_purge_loop
 from background.reminder_check import run_reminder_check_loop
 from background.session_cleanup import (
-    run_all_purges,
     run_session_cleanup_loop,
     run_transcript_purge_loop,
 )
@@ -45,26 +29,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── Module-level task registry (populated in lifespan) ────────────────────────
 _background_tasks: list[asyncio.Task] = []
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Lifespan
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Manage startup and graceful shutdown for BEAN AI."""
     settings = get_settings()
     logger.info(
         "BEAN AI v%s starting [env=%s]",
         settings.app_version,
         settings.environment,
     )
-
-    # ── Startup ───────────────────────────────────────────────────────────────
 
     db_healthy = await check_db_health()
     if not db_healthy:
@@ -80,18 +55,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.info("✓ Supabase connected")
 
-    # Start background jobs.
-    # FIX: Added run_emotion_purge_loop — it was missing from the original and
-    # is the single owner of scheduled emotion_events deletion (per emotion_purge.py).
-    _background_tasks.extend(
-        [
-            asyncio.create_task(run_transcript_purge_loop(), name="transcript-purge"),
-            asyncio.create_task(run_session_cleanup_loop(), name="session-cleanup"),
-            asyncio.create_task(run_reminder_check_loop(), name="reminder-check"),
-            asyncio.create_task(run_emotion_purge_loop(), name="emotion-purge"),
-        ]
-    )
-
+    _background_tasks.extend([
+        asyncio.create_task(run_transcript_purge_loop(), name="transcript-purge"),
+        asyncio.create_task(run_session_cleanup_loop(), name="session-cleanup"),
+        asyncio.create_task(run_reminder_check_loop(), name="reminder-check"),
+        asyncio.create_task(run_emotion_purge_loop(), name="emotion-purge"),
+    ])
     logger.info(
         "✓ Background jobs started (%d tasks): %s",
         len(_background_tasks),
@@ -99,42 +68,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     logger.info("✓ BEAN AI ready — listening on :%d", settings.port)
 
-    yield
-
-    # ── Shutdown ──────────────────────────────────────────────────────────────
-
-    logger.info("BEAN AI shutting down…")
-
-    # Cancel all background tasks and wait for them to exit cleanly.
-    for task in _background_tasks:
-        task.cancel()
-    if _background_tasks:
-        await asyncio.gather(*_background_tasks, return_exceptions=True)
-    logger.info("✓ Background tasks cancelled")
-
-    # FIX: Close the shared httpx.AsyncClient used by auth routes for Google
-    # OAuth token exchange.  Without this the process leaks an open connection
-    # pool on every restart.
     try:
-        from api.routes.auth import OAUTH_HTTP_CLIENT
-
-        await OAUTH_HTTP_CLIENT.aclose()
-        logger.info("✓ OAuth HTTP client closed")
-    except Exception as exc:  # pragma: no cover
-        logger.warning("OAuth HTTP client close failed (non-critical): %s", exc)
-
-    await close_clients()
-    logger.info("✓ Supabase clients closed")
-    logger.info("✓ BEAN AI shutdown complete")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# App factory
-# ─────────────────────────────────────────────────────────────────────────────
+        yield
+    finally:
+        logger.info("BEAN AI shutting down…")
+        for task in _background_tasks:
+            task.cancel()
+        if _background_tasks:
+            await asyncio.gather(*_background_tasks, return_exceptions=True)
+        logger.info("✓ Background tasks cancelled")
+        await close_clients()
+        logger.info("✓ Supabase clients closed")
+        _background_tasks.clear()
+        logger.info("✓ BEAN AI shutdown complete")
 
 
 def create_app() -> FastAPI:
-    """Construct and configure the FastAPI application."""
     settings = get_settings()
 
     app = FastAPI(
@@ -144,15 +93,67 @@ def create_app() -> FastAPI:
             "BEAN AI — Privacy-First Mental Health Companion Robot API. "
             "Supports ESP32-S3 Nano hardware via WebSocket real-time audio pipeline."
         ),
-        # Disable interactive docs in production to reduce attack surface.
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
         lifespan=lifespan,
     )
 
-    # ── Middleware ─────────────────────────────────────────────────────────────
-    # Starlette applies middleware bottom-up, so the outermost (last added) runs
-    # first.  Desired order: CORS → Auth → RateLimiter → handler.
+    # ── Health & root routes ──────────────────────────────────────────────────
+    @app.get("/")
+    async def root() -> dict:
+        return {
+            "status": "ok",
+            "service": settings.app_name,
+            "version": settings.app_version,
+        }
+
+    @app.get("/health")
+    @app.get("/api/v1/health")
+    async def health() -> JSONResponse:
+        db_ok = await check_db_health()
+        return JSONResponse(
+            status_code=200 if db_ok else 503,
+            content={
+                "status": "healthy" if db_ok else "degraded",
+                "version": settings.app_version,
+                "environment": settings.environment,
+                "supabase": db_ok,
+                "deepgram_configured": bool(settings.deepgram_api_key),
+                "elevenlabs_configured": bool(settings.elevenlabs_api_key),
+                "gemini_configured": bool(settings.google_api_key),
+            },
+        )
+    # ─────────────────────────────────────────────────────────────────────────
+
+    app.include_router(ws_router)
+
+    # ── Middleware stack ──────────────────────────────────────────────────────
+    # FIX: In FastAPI/Starlette, add_middleware() prepends to the internal list
+    # and the middleware stack is built with reversed(), so the LAST call to
+    # add_middleware() becomes the OUTERMOST middleware (first to handle every
+    # incoming request and last to handle every outgoing response).
+    #
+    # Correct execution order for a request:
+    #   CORSMiddleware → SupabaseAuthMiddleware → RateLimiterMiddleware → route
+    #
+    # Why CORS must be outermost:
+    #   - CORS headers must be present on ALL responses, including 401s from
+    #     the auth middleware. If CORSMiddleware is innermost it only runs after
+    #     auth has already returned, so the browser sees a 401 without CORS
+    #     headers and reports a CORS error instead of the actual auth failure.
+    #   - OPTIONS preflight requests must be handled by CORS before they ever
+    #     reach auth or rate-limiting logic.
+    #
+    # Why Auth before RateLimit:
+    #   - The rate limiter uses request.state.user_id (set by auth middleware)
+    #     for per-user rate limiting. Auth must run first so user_id is available.
+    #
+    # add_middleware call order (last = outermost):
+    #   1. RateLimiterMiddleware     ← added first → innermost
+    #   2. SupabaseAuthMiddleware    ← added second → middle
+    #   3. CORSMiddleware            ← added last  → outermost
+    app.add_middleware(RateLimiterMiddleware)
+    app.add_middleware(SupabaseAuthMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
@@ -160,87 +161,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.add_middleware(RateLimiterMiddleware)
-    app.add_middleware(SupabaseAuthMiddleware)
-
-    # ── Routes ────────────────────────────────────────────────────────────────
-    app.include_router(health.router)
-    app.include_router(auth.router)
-    app.include_router(sessions.router)
-    app.include_router(alerts.router)
-    app.include_router(emotions.router)
-    app.include_router(tasks.router)
-    app.include_router(guardian.router)
-    app.include_router(ws_router)
-
-    # Internal admin routes (authenticated by shared secret header).
-    _register_internal_routes(app)
 
     return app
 
-
-def _register_internal_routes(app: FastAPI) -> None:
-    """Register /internal/* admin endpoints.
-
-    These endpoints are NOT exposed via the public API router and are
-    guarded by an X-Internal-Key header check.  In production, Cloud Run
-    ingress rules should additionally restrict access to internal IPs only.
-
-    FIX: The original code had no authentication on /internal/purge, making
-    it an unauthenticated DoS vector.  This version validates a shared secret.
-    """
-    from fastapi import APIRouter, Header, HTTPException
-
-    internal = APIRouter(prefix="/internal", tags=["internal"])
-
-    def _require_internal_key(
-        x_internal_key: str | None = Header(default=None),
-    ) -> None:
-        """Validate the shared internal key sent by orchestration scripts."""
-        settings = get_settings()
-        expected = getattr(settings, "internal_api_key", None) or ""
-        if not expected:
-            # If no key is configured the endpoint is disabled in production.
-            if settings.is_production:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Internal endpoints are not configured in production.",
-                )
-            return  # Allow unauthenticated access in non-production only.
-        if not x_internal_key or x_internal_key != expected:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or missing X-Internal-Key header.",
-            )
-
-    @internal.post("/purge")
-    async def trigger_purge(request: Request) -> JSONResponse:
-        """Trigger an immediate full data purge sweep (admin only)."""
-        _require_internal_key(
-            request.headers.get("x-internal-key")
-            or request.headers.get("X-Internal-Key")
-        )
-        try:
-            results = await run_all_purges()
-            return JSONResponse(content={"status": "ok", "results": results})
-        except Exception as exc:
-            logger.error("Manual purge failed: %s", exc)
-            return JSONResponse(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={"status": "error", "detail": str(exc)},
-            )
-
-    @internal.get("/health")
-    async def internal_health() -> JSONResponse:
-        """Liveness probe for internal orchestration systems."""
-        return JSONResponse(content={"status": "ok", "tasks": len(_background_tasks)})
-
-    app.include_router(internal)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Application singleton
-# ─────────────────────────────────────────────────────────────────────────────
 
 app = create_app()
 

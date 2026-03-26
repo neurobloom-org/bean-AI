@@ -34,7 +34,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
-from api.middleware.rate_limiter import clean_expired_rate_limits
+from services.cleanup_service import clean_expired_rate_limits
 from services.privacy_service import privacy_service
 from services.supabase_client import get_service_client
 from shared.config import get_settings

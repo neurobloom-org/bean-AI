@@ -91,7 +91,7 @@ async def check_db_health() -> bool:
     """Verify Supabase connectivity. Used in /health endpoint."""
     try:
         client = await get_service_client()
-        await client.table("health_check").select("id").limit(1).execute()
+        await client.table("sessions").select("id").limit(1).execute()
         return True
     except Exception as exc:
         logger.error("Supabase health check failed: %s", exc)
@@ -106,14 +106,26 @@ async def check_db_health() -> bool:
 async def close_clients() -> None:
     """Release Supabase clients on app shutdown."""
     global _anon_client, _service_client
+    for client, label in (
+        (_anon_client, "anon"),
+        (_service_client, "service"),
+    ):
+        if client is not None:
+            # supabase-py 2.x AsyncClient does not expose a public aclose()
+            # method. Calling it raises AttributeError and prevents clean
+            # shutdown. Close the underlying httpx transport instead.
+            try:
+                if hasattr(client, "postgrest") and hasattr(client.postgrest, "aclose"):
+                    await client.postgrest.aclose()
+            except Exception as exc:
+                logger.warning("Supabase %s client close error: %s", label, exc)
     _anon_client = None
     _service_client = None
-    logger.info("Supabase clients released")
+    logger.info("Supabase clients closed")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Session state helpers (replaces Redis session cache)
-# Session state lives in Supabase; hot path uses in-memory dict per WS conn.
+# Session state helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -153,22 +165,34 @@ async def set_session_state(session_id: str, state: dict[str, Any]) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Semantic profile helpers (replaces Redis profile cache)
+# Semantic profile helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 async def get_user_profile(user_id: str) -> dict[str, Any] | None:
-    """Fetch the user's semantic profile (extracted facts only, no raw text)."""
+    """Fetch the user's semantic profile (extracted facts only, no raw text).
+
+    FIX: Changed .single() to .maybe_single().
+
+    .single() raises PostgREST406Error ("JSON object requested, multiple
+    (or no) rows returned") when no row exists — which happens for every
+    new user who hasn't had a profile built yet. Although the exception is
+    caught, it pollutes logs and relies on exception control flow for a
+    completely normal case (new user = no profile yet).
+
+    .maybe_single() returns None cleanly when zero rows match, which is
+    the correct semantic for "profile may or may not exist".
+    """
     try:
         client = await get_service_client()
         result = (
             await client.table("user_profiles")
             .select("*")
             .eq("user_id", user_id)
-            .single()
+            .maybe_single()  # FIX: was .single() — raises when no profile exists
             .execute()
         )
-        return dict(result.data) if result.data else None
+        return dict(result.data) if result and result.data else None
     except Exception as exc:
         logger.debug("No profile found for user %s: %s", user_id, exc)
         return None

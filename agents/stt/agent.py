@@ -111,6 +111,14 @@ _active_sessions: dict[str, DeepgramSession] = {}
 _pending_session_tasks: dict[str, asyncio.Task[DeepgramSession]] = {}
 
 # Guards all mutations to both dicts above.
+# NOTE:
+# asyncio.Lock() at module import time is acceptable in Python 3.10+ because
+# lock construction no longer requires a running event loop. In production this
+# module is expected to run on a single application event loop, so this is low
+# risk. In tests that repeatedly create independent loops (for example via
+# asyncio.run()), be aware that module-level asyncio primitives can end up bound
+# to a different loop than the one currently executing. If that ever becomes an
+# issue, prefer initializing such locks during app startup under the active loop.
 _sessions_lock = asyncio.Lock()
 
 

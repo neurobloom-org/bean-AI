@@ -1,49 +1,33 @@
-"""BEAN AI v5 — ESP32 WebSocket handler.
+"""BEAN AI v1 — ESP32 WebSocket handler.
 
-Handles the full real-time audio pipeline:
+Real-time audio pipeline:
   ESP32 → PCM16 audio → Deepgram STT → Orchestrator → ElevenLabs TTS → ESP32
+  ESP32 ← Supabase Storage binary chunks ← MusicPlayer (background task)
 
-Security:
-  ✓  JWT via Sec-WebSocket-Protocol header (not query param)
-  ✓  Rate limiting per user via Supabase-backed limiter
-  ✓  Audio frames validated for max size before processing
-  ✓  WebSocket closed gracefully on auth failure (code 4401)
+Music streaming protocol (binary + JSON over same WebSocket):
+  Server → ESP32:
+    {"type": "music_start",   "song_id": "...", "title": "...", "mood": "calm"}
+    <binary bytes: MP3/OGG audio chunks, ~8 KB each>
+    <binary bytes: ...>
+    {"type": "music_end"}           — song finished, looping to next
+    {"type": "music_stopped"}       — user said stop / session ended
 
-Privacy:
-  ✓  Audio bytes held in RAM only — never written to any storage
-  ✓  Transcript stored temporarily (24h) via PrivacyService
-  ✓  TTS audio streamed directly to ESP32 — never cached
+  Server → ESP32 (volume):
+    {"type": "music_volume", "volume": 70}
 
-Music:
-  ✓  music_command from session.state forwarded to ESP32 as JSON
-  ✓  Supports play/stop/next/pause/resume/set_volume
+  ESP32 → Server (optional feedback):
+    {"type": "music_status", "status": "playing"|"stopped", "genre": "calm"}
 
-Reminders:
-  ✓  _active_sessions dict exported for background reminder checker
+TTS and music never overlap:
+  When TTS is sending binary audio, MusicPlayer pauses (checks tts_active flag
+  before each chunk). The ESP32 speaker hears only one stream at a time.
 
-Keepalive:
-  ✓  Server-side ping task prevents silent ESP32 TCP timeouts
-
-Bugs fixed vs. original:
-  - get_pending_music_command imported but didn't exist → ImportError every
-    music route turn.  Now reads music_command from session_state dict.
-  - set_session_token imported but didn't exist → ImportError every turn.
-    Entire redundant calendar-token block removed; orchestrator handles it.
-  - WebSocketAuthError now imported from shared.exceptions (canonical source),
-    not from auth_middleware (which re-exports it but is explicitly flagged as
-    wrong in shared/exceptions.py docstring).
-  - route was read inside the async-for loop before the orchestrator had set
-    it; moved to after the loop.
-  - No keepalive task → ESP32 connections would silently time out under
-    quiet periods. A server-side ping task now runs every ws_ping_interval_seconds.
-  - DeepgramConnection was assigned a tuple (trailing comma) instead of the
-    connection object itself.
-  - on_transcript / on_utterance_end passed with wrong signatures; wrapped
-    in lambdas that close over session so the signatures match what
-    DeepgramConnection expects.
-  - orchestrator.run_async() called with user_id/session_id/session_state
-    kwargs that BaseAgent.run_async() does not accept. Fixed to use
-    InMemoryRunner — the correct ADK public API for invoking agents.
+MusicPlayer lifecycle per session:
+  play(mood)   → cancel any current task → start new looping task
+  stop()       → set stop_event → cancel task → send music_stopped
+  next_track() → set stop_event on current song → restart same mood
+  set_volume() → send {"type": "music_volume", "volume": N} immediately
+  pause/resume → set/clear paused flag (ESP32 handles buffer drain)
 """
 
 from __future__ import annotations
@@ -58,31 +42,222 @@ from google.adk.runners import InMemoryRunner
 from google.genai import types as genai_types
 
 from agents.orchestrator.agent import orchestrator
-from api.middleware.auth_middleware import authenticate_websocket
+from api.middleware.auth_middleware import extract_token_from_websocket
 from api.middleware.rate_limiter import check_ws_rate_limit
 from services.deepgram_service import DeepgramConnection
 from services.elevenlabs_service import stream_tts_to_websocket
+from services.music_service import pick_song, stream_song_chunks
 from services.privacy_service import privacy_service
 from services.supabase_client import get_service_client
 from shared.config import get_settings
-from shared.exceptions import WebSocketAuthError
 from shared.schemas import utcnow
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# ── Active session registry (exported for background/reminder_check.py) ───────
-# Maps session_id → {"user_id": str, "websocket": WebSocket, "pending_reminder": dict|None}
+# ── Active session registry ────────────────────────────────────────────────────
 _active_sessions: dict[str, dict] = {}
+_WS_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _fire_and_forget(coro) -> None:
+    task = asyncio.create_task(coro)
+    _WS_BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_WS_BACKGROUND_TASKS.discard)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Per-connection session state
+# MusicPlayer
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class MusicPlayer:
+    """Per-session music streaming controller."""
+
+    def __init__(self, session: "BEANSession") -> None:
+        self._session = session
+        self._task: asyncio.Task | None = None
+        self._stop_event = asyncio.Event()
+        self._song_stop_event = asyncio.Event()
+        self._mood: str | None = None
+        self._paused: bool = False
+
+    @property
+    def is_playing(self) -> bool:
+        return self._task is not None and not self._task.done()
+
+    @property
+    def mood(self) -> str | None:
+        return self._mood
+
+    async def play(self, mood: str) -> None:
+        """Start (or restart) looping music for the given mood."""
+        await self._cancel_task()
+        self._stop_event.clear()
+        self._song_stop_event.clear()
+        self._paused = False
+        self._mood = mood
+        self._task = asyncio.create_task(
+            self._run_loop(mood),
+            name=f"music-{self._session.session_id[:8]}",
+        )
+
+    async def stop(self) -> None:
+        """Stop music entirely. Sends music_stopped to ESP32."""
+        self._mood = None
+        self._stop_event.set()
+        task_was_running = self._task is not None and not self._task.done()
+        await self._cancel_task()
+        if not task_was_running:
+            await self._session.send_json({"type": "music_stopped"})
+
+    async def next_track(self) -> None:
+        """Skip current song, stay in same mood."""
+        if self._mood and self.is_playing:
+            self._song_stop_event.set()
+        elif self._mood:
+            await self.play(self._mood)
+
+    async def set_volume(self, volume: int) -> None:
+        """Send volume command to ESP32 immediately."""
+        volume = max(0, min(100, volume))
+        await self._session.send_json({"type": "music_volume", "volume": volume})
+
+    def pause(self) -> None:
+        """Pause chunk sending (used while TTS is active)."""
+        self._paused = True
+
+    def resume_playback(self) -> None:
+        """Resume chunk sending after TTS ends."""
+        self._paused = False
+
+    async def cleanup(self) -> None:
+        """Call on session disconnect — cancel gracefully."""
+        self._stop_event.set()
+        await self._cancel_task()
+
+    async def _cancel_task(self) -> None:
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await asyncio.wait_for(self._task, timeout=3.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+        self._task = None
+
+    async def _run_loop(self, mood: str) -> None:
+        """Loop songs of the given mood until stop_event is set."""
+        try:
+            while not self._stop_event.is_set():
+                song = await pick_song(self._session.user_id, mood)
+
+                if not song:
+                    logger.warning(
+                        "No songs available for mood=%s user=%s",
+                        mood,
+                        self._session.user_id[:8],
+                    )
+                    await self._session.send_json({
+                        "type": "music_unavailable",
+                        "mood": mood,
+                        "message": f"No {mood} songs available yet. Upload some!",
+                    })
+                    break
+
+                self._song_stop_event.clear()
+
+                finished = await self._stream_one_song(song)
+                if not finished:
+                    break
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.error(
+                "MusicPlayer loop error [session=%s]: %s",
+                self._session.session_id[:8],
+                exc,
+            )
+        finally:
+            await self._session.send_json({"type": "music_stopped"})
+            logger.info(
+                "Music stopped [session=%s mood=%s]",
+                self._session.session_id[:8],
+                mood,
+            )
+
+    async def _stream_one_song(self, song: dict) -> bool:
+        """Stream a single song. Returns True if completed normally, False if stopped."""
+        song_id = str(song.get("id", ""))
+        title = song.get("title", "Music")
+        storage_path = song.get("storage_path", "")
+
+        if not storage_path:
+            logger.warning("Song %s has no storage_path — skipping", song_id[:8])
+            return True
+
+        await self._session.send_json({
+            "type": "music_start",
+            "song_id": song_id,
+            "title": title,
+            "mood": song.get("mood", "calm"),
+        })
+
+        logger.debug(
+            "Streaming song: id=%s title=%r path=%s session=%s",
+            song_id[:8],
+            title,
+            storage_path,
+            self._session.session_id[:8],
+        )
+
+        try:
+            async for chunk in stream_song_chunks(storage_path):
+                if self._stop_event.is_set():
+                    return False
+
+                if self._song_stop_event.is_set():
+                    await self._session.send_json({
+                        "type": "music_end",
+                        "song_id": song_id,
+                    })
+                    return True
+
+                while self._session.tts_active:
+                    await asyncio.sleep(0.05)
+                    if self._stop_event.is_set():
+                        return False
+
+                await self._session.send_bytes(chunk)
+
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error(
+                "Song stream error: id=%s error=%s [session=%s]",
+                song_id[:8],
+                exc,
+                self._session.session_id[:8],
+            )
+            return True
+
+        await self._session.send_json({
+            "type": "music_end",
+            "song_id": song_id,
+        })
+
+        _fire_and_forget(_increment_play_count(song_id))
+
+        return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BEANSession
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 class BEANSession:
-    """Per-connection session state (in-memory; persisted to DB at turn end)."""
+    """Per-connection in-memory state (persisted to Supabase at turn end)."""
 
     __slots__ = (
         "user_id",
@@ -94,10 +269,13 @@ class BEANSession:
         "turn_count",
         "route_distribution",
         "is_processing",
-        "recent_transcript",
         "is_minor",
-        "guardian_phone",
         "deepgram",
+        "music_player",
+        "tts_active",
+        "music_playing_mood",
+        "music_playing_volume",
+        "pending_reminder",
     )
 
     def __init__(self, user_id: str, session_id: str, websocket: WebSocket) -> None:
@@ -111,11 +289,15 @@ class BEANSession:
         self.turn_count: int = 0
         self.route_distribution: dict[str, int] = {}
         self.is_processing: bool = False
-        self.recent_transcript: list[dict] = []
         self.is_minor: bool = False
-        self.guardian_phone: str = ""
-
         self.deepgram: DeepgramConnection | None = None
+
+        self.tts_active: bool = False
+        self.music_playing_mood: str | None = None
+        self.music_playing_volume: int = 50
+        self.pending_reminder: dict | None = None
+
+        self.music_player = MusicPlayer(self)
 
     def add_emotion(self, emotion: str) -> None:
         self.current_emotion = emotion
@@ -127,17 +309,13 @@ class BEANSession:
         try:
             await self.websocket.send_json(data)
         except Exception as exc:
-            logger.debug(
-                "WS send_json failed [session=%s]: %s", self.session_id[:8], exc
-            )
+            logger.debug("WS send_json failed [session=%s]: %s", self.session_id[:8], exc)
 
     async def send_bytes(self, data: bytes) -> None:
         try:
             await self.websocket.send_bytes(data)
         except Exception as exc:
-            logger.debug(
-                "WS send_bytes failed [session=%s]: %s", self.session_id[:8], exc
-            )
+            logger.debug("WS send_bytes failed [session=%s]: %s", self.session_id[:8], exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -147,23 +325,59 @@ class BEANSession:
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    """Main WebSocket endpoint for the ESP32 BEAN robot.
-
-    Auth:   JWT via Sec-WebSocket-Protocol: bearer.<token>
-    Audio:  Binary frames, PCM16 @ 16 kHz, mono
-    Control: JSON messages — ping/pong, emotion results, robot status, etc.
-    """
+    """Main WebSocket endpoint for the ESP32 BEAN robot."""
     raw_protocol = websocket.headers.get("Sec-WebSocket-Protocol", "")
-    chosen = raw_protocol.split(",")[0].strip() if "bearer." in raw_protocol else None
+    protocols = [p.strip() for p in raw_protocol.split(",") if p.strip()]
+    chosen = next((p for p in protocols if p.startswith("bearer.")), None)
     await websocket.accept(subprotocol=chosen)
 
-    # ── Authenticate ──────────────────────────────────────────────────────────
-    try:
-        user_id, _payload = await authenticate_websocket(websocket)
-    except WebSocketAuthError:
-        return
+    device_id = (
+        websocket.query_params.get("device_id")
+        or websocket.headers.get("x-device-id", "").strip()
+    )
 
-    # ── Create session ────────────────────────────────────────────────────────
+    if device_id:
+        try:
+            # FIX Bug 7: removed duplicate inner import of get_service_client.
+            # The module-level import at the top of this file covers it.
+            client = await get_service_client()
+            result = (
+                await client.table("devices")
+                .select("user_id")
+                .eq("device_id", device_id)
+                .maybe_single()
+                .execute()
+            )
+            if not result or not result.data:
+                logger.warning("Unknown device_id=%s — closing WebSocket", device_id[:12])
+                await websocket.close(code=4001)
+                return
+            user_id: str = str(result.data["user_id"])
+            _fire_and_forget(
+                client.table("devices")
+                .update({"last_seen_at": utcnow().isoformat()})
+                .eq("device_id", device_id)
+                .execute()
+            )
+        except Exception as exc:
+            logger.error("Device auth error device_id=%s: %s", device_id[:12], exc)
+            await websocket.close(code=4001)
+            return
+    else:
+        token = extract_token_from_websocket(websocket)
+        if not token:
+            await websocket.close(code=4001)
+            return
+        try:
+            from api.middleware.auth_middleware import decode_supabase_jwt
+
+            payload = await decode_supabase_jwt(token)
+            user_id = payload["sub"]
+        except Exception as exc:
+            logger.warning("JWT auth failed: %s", exc)
+            await websocket.close(code=4003)
+            return
+
     session_id = str(uuid.uuid4())
     session = BEANSession(user_id=user_id, session_id=session_id, websocket=websocket)
 
@@ -177,25 +391,19 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         return
 
     _active_sessions[session_id] = {
+        "session_obj": session,
+        "battery_level": None,
+        "wifi_rssi": None,
         "user_id": user_id,
         "websocket": websocket,
-        "pending_reminder": None,
     }
 
     logger.info(
         "WebSocket connected: user=%s session=%s is_minor=%s",
-        user_id[:8],
-        session_id[:8],
-        session.is_minor,
+        user_id[:8], session_id[:8], session.is_minor,
     )
     await session.send_json({"type": "connected", "session_id": session_id})
 
-    # ── Deepgram STT ──────────────────────────────────────────────────────────
-    # FIX: removed trailing comma (was creating a tuple instead of a
-    # DeepgramConnection). Callbacks wrapped in lambdas that close over
-    # `session` so their signatures match what DeepgramConnection expects:
-    #   on_transcript:    Callable[[TranscriptResult], Coroutine]
-    #   on_utterance_end: Callable[[], Coroutine]
     try:
         session.deepgram = DeepgramConnection(
             on_transcript=lambda t: _handle_transcript(session, t),
@@ -209,8 +417,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         )
 
     settings = get_settings()
-
-    # ── Background tasks for this connection ──────────────────────────────────
     reminder_task = asyncio.create_task(
         _poll_reminders(session), name=f"reminders-{session_id[:8]}"
     )
@@ -219,32 +425,25 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         name=f"keepalive-{session_id[:8]}",
     )
 
-    # ── Main receive loop ─────────────────────────────────────────────────────
     try:
         while True:
             message = await websocket.receive()
 
             if message.get("bytes"):
                 audio_bytes: bytes = message["bytes"]
-
                 if len(audio_bytes) > settings.ws_max_audio_frame_bytes:
                     logger.warning(
-                        "Audio frame too large (%d bytes), dropping [session=%s]",
-                        len(audio_bytes),
-                        session_id[:8],
+                        "Audio frame too large (%d bytes) [session=%s]",
+                        len(audio_bytes), session_id[:8],
                     )
                     continue
-
                 if not await check_ws_rate_limit(user_id):
-                    await session.send_json(
-                        {
-                            "type": "error",
-                            "code": "rate_limited",
-                            "message": "Too many messages — please slow down.",
-                        }
-                    )
+                    await session.send_json({
+                        "type": "error",
+                        "code": "rate_limited",
+                        "message": "Too many messages — please slow down.",
+                    })
                     continue
-
                 if session.deepgram and session.deepgram.is_connected:
                     await session.deepgram.send_audio(audio_bytes)
 
@@ -255,16 +454,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 except json.JSONDecodeError:
                     logger.warning(
                         "Invalid JSON from ESP32 [session=%s]: %.100s",
-                        session_id[:8],
-                        message["text"],
+                        session_id[:8], message["text"],
                     )
 
     except WebSocketDisconnect:
         logger.info(
             "WebSocket disconnected: user=%s session=%s turns=%d",
-            user_id[:8],
-            session_id[:8],
-            session.turn_count,
+            user_id[:8], session_id[:8], session.turn_count,
         )
     except Exception as exc:
         logger.error("WebSocket error [session=%s]: %s", session_id[:8], exc)
@@ -272,71 +468,61 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         reminder_task.cancel()
         keepalive_task.cancel()
         _active_sessions.pop(session_id, None)
+        await session.music_player.cleanup()
         await _cleanup_session(session)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STT transcript handlers
+# STT handlers
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 async def _handle_transcript(session: BEANSession, transcript_result) -> None:
-    """Handle a Deepgram transcript callback (partial or final)."""
     if not transcript_result.is_final:
         await session.send_json(
             {"type": "transcript_partial", "text": transcript_result.text}
         )
         return
-
     text = transcript_result.text.strip()
     if not text:
         return
-
     session.transcript_buffer += (" " + text) if session.transcript_buffer else text
-    await session.send_json(
-        {
-            "type": "transcript_final",
-            "text": text,
-            "confidence": round(transcript_result.confidence, 2),
-        }
-    )
+    await session.send_json({
+        "type": "transcript_final",
+        "text": text,
+        "confidence": round(transcript_result.confidence, 2),
+    })
 
 
 async def _handle_utterance_end(session: BEANSession) -> None:
-    """Called when Deepgram signals the user has stopped speaking."""
-    if session.is_processing:
-        logger.debug(
-            "Utterance end skipped — already processing [session=%s]",
-            session.session_id[:8],
-        )
-        return
+    if session.music_playing_mood is not None:
+        await session.music_player.stop()
+        session.music_playing_mood = None
+        logger.info("Music stopped for incoming utterance [session=%s]", session.session_id[:8])
 
+    if session.is_processing:
+        return
     user_text = session.transcript_buffer.strip()
     if not user_text:
         return
 
     session.is_processing = True
     session.transcript_buffer = ""
-
     try:
         await _process_turn(session, user_text)
     except Exception as exc:
-        logger.error(
-            "Turn processing failed [session=%s]: %s", session.session_id[:8], exc
-        )
-        await session.send_json(
-            {
-                "type": "error",
-                "code": "processing_failed",
-                "message": "Something went wrong — please try again.",
-            }
-        )
+        logger.error("Turn processing failed [session=%s]: %s", session.session_id[:8], exc)
+        await session.send_json({
+            "type": "error",
+            "code": "processing_failed",
+            "message": "Something went wrong — please try again.",
+        })
     finally:
         session.is_processing = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Core conversation turn
+# Core turn
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -361,15 +547,12 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         "recent_transcript": recent,
         "is_minor": session.is_minor,
         "alert_dispatched": "false",
+        "pending_reminder": session.pending_reminder,
+        "music_playing_mood": session.music_playing_mood,
+        "music_playing_volume": session.music_playing_volume,
     }
 
     response_text = ""
-
-    # FIX: BaseAgent.run_async() does not accept user_id/session_id/session_state
-    # as kwargs — those belong to Runner.run_async(). Must go through
-    # InMemoryRunner, which is the correct ADK public API for invoking agents
-    # from outside the framework. This is the same pattern the orchestrator
-    # itself uses for sub-agent dispatch.
     runner = InMemoryRunner(agent=orchestrator)
     runner_session = await runner.session_service.create_session(
         app_name=runner.app_name,
@@ -388,8 +571,6 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         if event.content and event.content.parts:
             response_text = event.content.parts[0].text or ""
 
-    # Read back state mutations the orchestrator made during its run
-    # (route, music_command, response_text, post_alert_message, etc.)
     updated_session = await runner.session_service.get_session(
         app_name=runner.app_name,
         user_id=session.user_id,
@@ -398,54 +579,96 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
     if updated_session:
         session_state = dict(updated_session.state)
 
-    route: str = session_state.get("route", "casual")
-    music_command: dict | None = session_state.get("music_command")
+    if session.pending_reminder:
+        session.pending_reminder = None
 
+    route: str = session_state.get("route", "casual")
     if not response_text:
         response_text = session_state.get("response_text", "")
 
     if not response_text:
         logger.warning(
             "Orchestrator returned no text [session=%s route=%s]",
-            session.session_id[:8],
-            route,
+            session.session_id[:8], route,
         )
         return
 
     session.route_distribution[route] = session.route_distribution.get(route, 0) + 1
 
-    await session.send_json(
-        {
-            "type": "response_text",
-            "text": response_text,
-            "route": route,
-            "turn_id": turn_id,
-        }
-    )
-
-    if music_command and isinstance(music_command, dict):
-        await session.send_json(music_command)
-        logger.info(
-            "Music command sent to ESP32: type=%s session=%s",
-            music_command.get("type"),
-            session.session_id[:8],
-        )
+    await session.send_json({
+        "type": "response_text",
+        "text": response_text,
+        "route": route,
+        "turn_id": turn_id,
+    })
 
     post_alert = session_state.get("post_alert_message")
     if post_alert:
         await session.send_json({"type": "alert_notification", "message": post_alert})
 
-    tts_text = (
-        response_text
-        if route != "music"
-        else (response_text if response_text.strip() else None)
-    )
-    if tts_text:
+    session.tts_active = True
+    try:
         await stream_tts_to_websocket(
-            text=tts_text,
+            text=response_text.strip(),
             websocket=session.websocket,
             turn_id=turn_id,
         )
+    except Exception as exc:
+        logger.error(
+            "TTS stream failed [session=%s turn=%s]: %s",
+            session.session_id[:8], turn_id[:8], exc,
+        )
+        await session.send_json(
+            {"type": "error", "code": "tts_failed", "message": "Audio unavailable."}
+        )
+    finally:
+        session.tts_active = False
+
+    if route == "music":
+        await _handle_music_action(session, session_state)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Music action handler
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+async def _handle_music_action(session: BEANSession, session_state: dict) -> None:
+    """Process music_action from the MusicAgent's session state."""
+    action: str = str(session_state.get("music_action") or "play_music")
+    mood: str = str(session_state.get("music_mood") or "calm")
+    volume: int | None = session_state.get("music_volume")
+
+    logger.info(
+        "Music action: %s mood=%s volume=%s [session=%s]",
+        action, mood, volume, session.session_id[:8],
+    )
+
+    if action == "play_music":
+        await session.music_player.play(mood)
+        session.music_playing_mood = mood
+
+    elif action == "stop_music":
+        await session.music_player.stop()
+        session.music_playing_mood = None
+
+    elif action == "next_track":
+        await session.music_player.next_track()
+
+    elif action == "pause_music":
+        session.music_player.pause()
+        await session.send_json({"type": "music_paused"})
+
+    elif action == "resume_music":
+        session.music_player.resume_playback()
+        await session.send_json({"type": "music_resumed"})
+        if not session.music_player.is_playing and session.music_playing_mood:
+            await session.music_player.play(session.music_playing_mood)
+
+    elif action == "set_volume":
+        if volume is not None:
+            await session.music_player.set_volume(volume)
+            session.music_playing_volume = volume
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -454,7 +677,7 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
 
 
 async def _handle_control_message(session: BEANSession, data: dict) -> None:
-    """Route incoming ESP32 JSON control messages to their handlers."""
+    """Route incoming ESP32 JSON control messages."""
     msg_type = data.get("type", "")
 
     if msg_type == "ping":
@@ -464,7 +687,11 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
         emotion = data.get("emotion", "neutral")
         confidence = round(float(data.get("confidence", 0.0)), 2)
         session.add_emotion(emotion)
-        asyncio.create_task(_store_emotion_event(session, emotion, confidence))
+        _fire_and_forget(_store_emotion_event(session, emotion, confidence))
+
+    elif msg_type == "music_status":
+        if data.get("status") == "stopped":
+            session.music_playing_mood = None
 
     elif msg_type == "robot_status":
         battery = data.get("battery_level")
@@ -476,98 +703,71 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
             session.session_id[:8],
         )
         if session.session_id in _active_sessions:
-            _active_sessions[session.session_id].update(
-                {"battery_level": battery, "wifi_rssi": rssi}
-            )
+            _active_sessions[session.session_id].update({"battery_level": battery, "wifi_rssi": rssi})
 
     elif msg_type == "end_session":
         await _cleanup_session(session)
 
     else:
-        logger.debug(
-            "Unknown control message type '%s' [session=%s]",
-            msg_type,
-            session.session_id[:8],
-        )
+        logger.debug("Unknown control message '%s' [session=%s]", msg_type, session.session_id[:8])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Keepalive ping
+# Background helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 async def _keepalive_ping(session: BEANSession, interval: int = 20) -> None:
-    """Send periodic server-initiated pings to keep the ESP32 TCP connection alive."""
     while True:
         try:
             await asyncio.sleep(interval)
             await session.send_json({"type": "ping", "timestamp": utcnow().isoformat()})
         except asyncio.CancelledError:
             break
-        except Exception as exc:
-            logger.debug(
-                "Keepalive ping failed [session=%s]: %s",
-                session.session_id[:8],
-                exc,
-            )
+        except Exception:
             break
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Reminder polling
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 async def _poll_reminders(session: BEANSession) -> None:
-    """Deliver pending reminders injected by the background reminder_check job."""
+    from services.redis_service import redis_get, redis_delete
+
     while True:
         try:
             await asyncio.sleep(15)
-            entry = _active_sessions.get(session.session_id)
-            if not entry:
-                break
-
-            reminder = entry.get("pending_reminder")
+            redis_key = f"pending_reminder:{session.user_id}"
+            reminder = await redis_get(redis_key)
             if not reminder:
                 continue
-
-            entry["pending_reminder"] = None
-
-            await session.send_json(
-                {
-                    "type": "reminder",
-                    "task_id": reminder.get("task_id"),
-                    "title": reminder.get("title"),
-                    "description": reminder.get("description"),
-                    "due_at": reminder.get("due_at"),
-                }
-            )
+            await redis_delete(redis_key)
+            session.pending_reminder = reminder
             logger.info(
-                "Reminder delivered to ESP32: task=%s user=%s",
-                reminder.get("task_id"),
-                session.user_id[:8],
+                "Reminder queued for next turn [session=%s task=%s]",
+                session.session_id[:8],
+                str(reminder.get("task_id", ""))[:8],
             )
-
         except asyncio.CancelledError:
             break
         except Exception as exc:
-            logger.debug(
-                "Reminder poll error [session=%s]: %s",
-                session.session_id[:8],
-                exc,
-            )
+            logger.debug("Reminder poll error [session=%s]: %s", session.session_id[:8], exc)
+
+
+async def _increment_play_count(song_id: str) -> None:
+    """Increment the play_count for a song (best-effort, non-blocking)."""
+    try:
+        client = await get_service_client()
+        await client.rpc("increment_song_play_count", {"p_song_id": song_id}).execute()
+    except Exception:
+        pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Session lifecycle helpers
+# Session lifecycle
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 async def _load_user_flags(session: BEANSession) -> None:
-    """Load is_minor flag from the user's profile in Supabase."""
     try:
         from services.supabase_client import get_user_profile
-
         profile = await get_user_profile(session.user_id)
         if profile:
             diagnosis_tags = profile.get("diagnosis_tags", []) or []
@@ -575,90 +775,77 @@ async def _load_user_flags(session: BEANSession) -> None:
                 bool(profile.get("is_minor", False)) or "minor" in diagnosis_tags
             )
     except Exception as exc:
-        logger.debug(
-            "Failed to load user flags [session=%s]: %s",
-            session.session_id[:8],
-            exc,
-        )
+        logger.debug("Failed to load user flags [session=%s]: %s", session.session_id[:8], exc)
 
 
 async def _create_session_record(user_id: str, session_id: str) -> None:
-    """Insert a new session row in Supabase."""
-    client = await get_service_client()
-    await (
-        client.table("sessions")
-        .insert(
-            {
+    try:
+        client = await get_service_client()
+        await (
+            client.table("sessions")
+            .insert({
                 "id": session_id,
                 "user_id": user_id,
                 "started_at": utcnow().isoformat(),
                 "status": "active",
-            }
+            })
+            .execute()
         )
-        .execute()
-    )
+    except Exception as exc:
+        logger.error(
+            "Failed to create session record [session=%s user=%s]: %s",
+            session_id[:8], user_id[:8], exc,
+        )
+        raise
 
 
-async def _store_emotion_event(
-    session: BEANSession, emotion: str, confidence: float
-) -> None:
-    """Persist a detected emotion event (non-blocking, non-critical)."""
+async def _store_emotion_event(session: BEANSession, emotion: str, confidence: float) -> None:
     try:
         client = await get_service_client()
         await (
             client.table("emotion_events")
-            .insert(
-                {
-                    "user_id": session.user_id,
-                    "session_id": session.session_id,
-                    "emotion": emotion,
-                    "confidence": confidence,
-                }
-            )
+            .insert({
+                "user_id": session.user_id,
+                "session_id": session.session_id,
+                "emotion": emotion,
+                "confidence": confidence,
+            })
             .execute()
         )
     except Exception as exc:
-        logger.debug(
-            "Emotion event store failed (non-critical) [session=%s]: %s",
-            session.session_id[:8],
-            exc,
-        )
+        logger.debug("Emotion event store failed (non-critical) [session=%s]: %s", session.session_id[:8], exc)
 
 
 async def _cleanup_session(session: BEANSession) -> None:
-    """Close Deepgram and mark the session as ended in Supabase."""
     if session.deepgram:
         try:
             await session.deepgram.close()
         except Exception:
             pass
-
     try:
         client = await get_service_client()
         await (
             client.table("sessions")
-            .update(
-                {
-                    "status": "ended",
-                    "ended_at": utcnow().isoformat(),
-                    "turn_count": session.turn_count,
-                    "route_distribution": session.route_distribution,
-                    "state_json": {},
-                }
-            )
+            .update({
+                "status": "ended",
+                "ended_at": utcnow().isoformat(),
+                "turn_count": session.turn_count,
+                "route_distribution": session.route_distribution,
+                "state_json": {},
+            })
             .eq("id", session.session_id)
             .execute()
         )
-    except Exception as exc:
-        logger.error(
-            "Session cleanup DB update failed [session=%s]: %s",
-            session.session_id[:8],
-            exc,
-        )
 
+        from shared.conversation_cache import clear_history
+        try:
+            await clear_history(session.session_id)
+        except Exception:
+            pass
+
+    except Exception as exc:
+        logger.error("Session cleanup DB update failed [session=%s]: %s", session.session_id[:8], exc)
     logger.info(
         "Session ended: user=%s session=%s turns=%d",
-        session.user_id[:8],
-        session.session_id[:8],
-        session.turn_count,
+        session.user_id[:8], session.session_id[:8], session.turn_count,
     )
