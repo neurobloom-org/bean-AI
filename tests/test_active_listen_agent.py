@@ -7,6 +7,11 @@ from unittest.mock import MagicMock
 sys.modules["google"] = MagicMock()
 sys.modules["google.adk"] = MagicMock()
 sys.modules["google.adk.tools"] = MagicMock()
+sys.modules["google.adk.agents"] = MagicMock()
+sys.modules["google.adk.agents.invocation_context"] = MagicMock()
+sys.modules["google.adk.events"] = MagicMock()
+sys.modules["google.genai"] = MagicMock()
+sys.modules["google.genai.types"] = MagicMock()
 
 from agents.active_listen.agent import get_filler_phrase  # noqa: E402
 
