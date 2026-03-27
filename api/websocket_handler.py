@@ -437,7 +437,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         len(audio_bytes), session_id[:8],
                     )
                     continue
-                if not await check_ws_rate_limit(user_id):
+                if False and not await check_ws_rate_limit(user_id):
                     await session.send_json({
                         "type": "error",
                         "code": "rate_limited",
