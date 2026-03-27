@@ -225,13 +225,19 @@ async def _decode_with_jwks(token: str, kid: str) -> dict[str, Any]:
         raise AuthError(f"No matching signing key found for kid={kid!r}")
 
     try:
-        public_key = cast(RSAPublicKey, algorithms.RSAAlgorithm.from_jwk(matching_key))
+        alg_type = matching_key.get("kty", "RSA")
+        if alg_type == "EC":
+            from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
+            public_key = algorithms.ECAlgorithm.from_jwk(matching_key)
+        else:
+            public_key = algorithms.RSAAlgorithm.from_jwk(matching_key)
+
         return cast(
             dict[str, Any],
             pyjwt.decode(
                 token,
                 public_key,
-                algorithms=["RS256"],
+                algorithms=["RS256", "ES256"],
                 audience="authenticated",
                 issuer=_expected_issuer(),
                 options={"require": ["exp", "sub", "aud", "iss"]},
@@ -254,9 +260,9 @@ async def decode_supabase_jwt(token: str) -> dict[str, Any]:
     if alg == "HS256":
         return _decode_with_hs256(token)
 
-    if alg == "RS256":
+    if alg in ("RS256", "ES256"):
         if not kid:
-            raise AuthError("RS256 token missing 'kid'")
+            raise AuthError(f"{alg} token missing 'kid'")
         return await _decode_with_jwks(token, str(kid))
 
     raise AuthError(f"Unsupported JWT algorithm: {alg!r}")
