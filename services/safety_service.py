@@ -229,6 +229,7 @@ class SafetyService:
                 alert_level=alert_level,
                 factors=factors,
             )
+            await self._notify_guardian(user_id=user_id, alert_level=alert_level)
 
         # Raise immediately for crisis
         if alert_level == AlertLevel.CRISIS:
@@ -274,7 +275,52 @@ class SafetyService:
         except Exception as exc:
             logger.error("Failed to create alert record: %s", exc)
             return None
+    async def _notify_guardian(self, user_id: str, alert_level: AlertLevel) -> None:
+        """Send privacy-safe SMS to the user's guardian/doctor."""
+        try:
+            client = await get_service_client()
 
+            guardian_result = (
+                await client.table("guardian_links")
+                .select("guardian_user_id, patient_user_id")
+                .eq("patient_user_id", user_id)
+                .eq("can_view_alerts", True)
+                .execute()
+            )
+
+            if not guardian_result.data:
+                logger.warning("No guardian found for user %s", user_id)
+                return
+
+            for link in guardian_result.data:
+                guardian_id = link["guardian_user_id"]
+                try:
+                    guardian_auth = await asyncio.wait_for(
+                        get_service_client(),
+                        timeout=5.0,
+                    )
+                    user_resp = (
+                        await guardian_auth.auth.admin.get_user_by_id(guardian_id)
+                    )
+                    phone = (user_resp.user.user_metadata or {}).get("phone")
+                    if phone:
+                        from services.twilio_service import send_guardian_sms
+                        if alert_level == AlertLevel.CRISIS:
+                            body = "URGENT: BEAN AI has detected a crisis situation. Please check on your patient immediately."
+                        else:
+                            body = "BEAN AI has detected a concern with your patient. Please check in with them when you can."
+                        await send_guardian_sms(to=phone, body=body)
+                        logger.warning(
+                            "SMS sent to guardian %s for user %s [level=%s]",
+                            guardian_id, user_id, alert_level.value,
+                        )
+                    else:
+                        logger.warning("AlertAgent: guardian phone missing [guardian=%s]", guardian_id)
+                except Exception as exc:
+                    logger.error("AlertAgent: guardian SMS failed [guardian=%s]: %s", guardian_id, exc)
+
+        except Exception as exc:
+            logger.error("_notify_guardian failed for user %s: %s", user_id, exc)
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
 safety_service = SafetyService()
