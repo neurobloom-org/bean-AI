@@ -202,10 +202,7 @@ class BEANOrchestrator(BaseAgent):
             "pending_reminder"
         )
         if pending_reminder:
-            state["reminder_hint"] = (
-                f"[Reminder hint — slip naturally into reply: "
-                f"'{pending_reminder.get('title')}' is due soon]"
-            )
+            state["reminder_hint"] = pending_reminder.get('title', 'your task')
             state["pending_reminder"] = None
             state["route"] = "casual"
 

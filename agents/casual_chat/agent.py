@@ -352,7 +352,7 @@ async def reply_with_history(
     ) or "No prior conversation this session."
 
     # Use the template (not the pre-filled constant) so real session data is injected.
-    reminder_str = f"\n\nCRITICAL INSTRUCTION: You MUST mention this reminder in your response: {reminder_hint}" if reminder_hint else ""
+    reminder_str = f"\n\nCRITICAL INSTRUCTION: Casually remind the user that '{reminder_hint}' is coming up soon. Slip it naturally into your reply without using brackets or technical language." if reminder_hint else ""
     instruction = _CASUAL_CHAT_INSTRUCTION_TEMPLATE.format(
         memory_context=memory_context or "No relevant memories.",
         current_emotion=emotion,
