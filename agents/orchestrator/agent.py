@@ -207,6 +207,7 @@ class BEANOrchestrator(BaseAgent):
                 f"'{pending_reminder.get('title')}' is due soon]"
             )
             state["pending_reminder"] = None
+            state["route"] = "casual"
 
         # ── Two-stage safety gate ─────────────────────────────────────────────
         transcript = str(state.get("current_transcript", ""))
@@ -264,7 +265,9 @@ class BEANOrchestrator(BaseAgent):
             },
         )
         route = routing_state.get("route", "casual")
-        state["route"] = route
+        logger.info("DEBUG: reminder_hint=%s route=%s", state.get("reminder_hint"), route)
+        if not state.get("reminder_hint"):
+            state["route"] = route
         state["routing_confidence"] = routing_state.get("routing_confidence", 0.5)
         state["routing_used_fallback"] = routing_state.get("routing_used_fallback", False)
 
@@ -357,7 +360,9 @@ class BEANOrchestrator(BaseAgent):
                         emotion=emotion,
                         conversation_history=conversation_history,
                         memory_context=memory_context,
+                        reminder_hint=state.get("reminder_hint"),
                     )
+                    state["reminder_hint"] = None
                     final_state = sub_state
                 except Exception as exc:
                     logger.error("reply_with_history failed, falling back to agent: %s", exc)

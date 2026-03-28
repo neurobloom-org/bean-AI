@@ -341,6 +341,7 @@ async def reply_with_history(
     emotion: str,
     conversation_history: list[dict],
     memory_context: str,
+    reminder_hint: str | None = None,
 ) -> str:
     """Generate a casual reply using conversation history + memory context."""
     from services.llm_service import generate
@@ -351,11 +352,12 @@ async def reply_with_history(
     ) or "No prior conversation this session."
 
     # Use the template (not the pre-filled constant) so real session data is injected.
+    reminder_str = f"\n\nCRITICAL INSTRUCTION: You MUST mention this reminder in your response: {reminder_hint}" if reminder_hint else ""
     instruction = _CASUAL_CHAT_INSTRUCTION_TEMPLATE.format(
         memory_context=memory_context or "No relevant memories.",
         current_emotion=emotion,
         conversation_history=history_str,
-    )
+    ) + reminder_str
 
     response = await generate(
         task="casual_chat",
