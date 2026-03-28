@@ -15,7 +15,6 @@ services:
   - type: web
     name: bean-api
     runtime: python
-    pythonVersion: "3.12"
     plan: standard           # standard = 2GB RAM — required for wav2vec2 + PyTorch
     buildCommand: pip install --extra-index-url https://download.pytorch.org/whl/cpu -e "."
     startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT --workers 1 --log-level info
@@ -99,7 +98,6 @@ services:
   - type: worker
     name: bean-workers
     runtime: python
-    pythonVersion: "3.12"
     plan: starter            # workers don't load wav2vec2; 512MB is sufficient
     buildCommand: pip install --extra-index-url https://download.pytorch.org/whl/cpu -e "."
     startCommand: python -m background.worker_main
