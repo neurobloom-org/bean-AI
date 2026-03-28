@@ -63,6 +63,7 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
         "/api/v1/auth/login",
         "/api/v1/auth/signup",
         "/api/v1/auth/callback",
+        "/api/v1/auth/google/callback",  # Google OAuth redirect — no JWT present
         "/api/v1/auth/refresh",
         "/docs",
         "/redoc",
@@ -317,8 +318,23 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):
         try:
             payload = await decode_supabase_jwt(token)
             request.state.user_id = _extract_user_id(payload)
-        except Exception as exc:
-            return JSONResponse(status_code=401, content={"detail": str(exc)})
+        except TokenExpiredError:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Token has expired — please re-authenticate"},
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+            )
+        except AuthError:
+            return JSONResponse(status_code=401, content={"detail": "Invalid token"})
+        except Exception:
+            # Infrastructure failure (JWKS fetch down, network error) — not a
+            # client auth error. Return 503 so clients don't retry with a new
+            # token when the issue is on the server side.
+            logger.exception("Auth middleware infrastructure error on %s", request.url.path)
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Authentication service unavailable"},
+            )
 
         return await call_next(request)
 
