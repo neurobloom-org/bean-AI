@@ -112,9 +112,15 @@ class DeepgramConnection:
     # ── URL builder ───────────────────────────────────────────────────────────
 
     def _build_url(self) -> str:
-        """Build the Deepgram streaming WebSocket URL from settings."""
+        """Build the Deepgram streaming WebSocket URL from settings.
+
+        Auth is passed as a query param (?token=...) — Deepgram officially
+        supports this and it avoids websockets library version compatibility
+        issues with custom header arguments (additional_headers vs extra_headers).
+        """
         s = self._settings
         params = {
+            "token": s.deepgram_api_key,
             "model": s.deepgram_model,
             "language": s.deepgram_language,
             "sample_rate": str(s.deepgram_sample_rate),
@@ -157,7 +163,6 @@ class DeepgramConnection:
 
             self._ws = await websockets.connect(
                 url,
-                additional_headers={"Authorization": f"Token {self._settings.deepgram_api_key}"},
                 ping_interval=self._settings.ws_ping_interval_seconds,
                 ping_timeout=10,
                 close_timeout=5,
