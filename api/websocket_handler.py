@@ -727,6 +727,11 @@ async def _handle_control_message(session: BEANSession, data: dict) -> None:
         if session.session_id in _active_sessions:
             _active_sessions[session.session_id].update({"battery_level": battery, "wifi_rssi": rssi})
 
+    elif msg_type == "stop_recording":
+        if session.deepgram and session.deepgram.is_connected:
+            await session.deepgram.send_finalize()
+            logger.info("Deepgram Finalize sent (stop_recording) [session=%s]", session.session_id[:8])
+
     elif msg_type == "end_session":
         await _cleanup_session(session)
 

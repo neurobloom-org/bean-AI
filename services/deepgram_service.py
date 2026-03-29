@@ -359,6 +359,33 @@ class DeepgramConnection:
                 f"Deepgram keepalive send failed: {exc}"
             ) from exc
 
+    async def send_finalize(self) -> None:
+        """Send a Deepgram Finalize message to flush buffered audio.
+
+        Called when the robot signals it has finished speaking (stop_recording).
+        Deepgram will process any remaining audio in its buffer and emit a
+        final transcript result, allowing the orchestrator to run.
+
+        Without this, if the robot stops sending audio frames abruptly (no
+        trailing silence), Deepgram never detects end-of-speech and never
+        emits is_final=true or UtteranceEnd.
+        """
+        if not self.is_connected or self._ws is None:
+            logger.debug("send_finalize: not connected — skipping")
+            return
+
+        try:
+            await self._ws.send('{"type": "Finalize"}')
+            logger.debug("Deepgram Finalize sent")
+
+        except ConnectionClosed:
+            logger.warning("Deepgram connection closed during send_finalize")
+            self._connected = False
+
+        except Exception as exc:
+            logger.error("send_finalize unexpected error: %s", exc)
+            self._connected = False
+
     # ── Receive loop ──────────────────────────────────────────────────────────
 
     async def _receive_loop(self) -> None:
