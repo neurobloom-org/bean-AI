@@ -186,7 +186,7 @@ def create_app() -> FastAPI:
         except Exception as exc:
             logger.warning("Redis health check failed: %s", exc)
 
-        overall = db_ok and redis_ok
+        overall = db_ok  # Redis degraded does not block service health
         return JSONResponse(
             status_code=200 if overall else 503,
             content={
