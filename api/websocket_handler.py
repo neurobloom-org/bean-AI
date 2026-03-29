@@ -423,6 +423,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         _keepalive_ping(session, interval=settings.ws_ping_interval_seconds),
         name=f"keepalive-{session_id[:8]}",
     )
+    dg_keepalive_task = asyncio.create_task(
+        _deepgram_keepalive(session), name=f"dg-keepalive-{session_id[:8]}"
+    )
+
+    _audio_frame_count = 0
 
     try:
         while True:
@@ -437,6 +442,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     )
                     continue
                 if session.deepgram and session.deepgram.is_connected:
+                    _audio_frame_count += 1
+                    if _audio_frame_count == 1:
+                        logger.info(
+                            "First audio frame received from robot [session=%s]",
+                            session_id[:8],
+                        )
+                    elif _audio_frame_count % 300 == 0:
+                        logger.debug(
+                            "Audio frames received: %d [session=%s]",
+                            _audio_frame_count, session_id[:8],
+                        )
                     await session.deepgram.send_audio(audio_bytes)
 
             elif message.get("text"):
@@ -459,6 +475,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     finally:
         reminder_task.cancel()
         keepalive_task.cancel()
+        dg_keepalive_task.cancel()
         _active_sessions.pop(session_id, None)
         await session.music_player.cleanup()
         await _cleanup_session(session)
@@ -718,6 +735,29 @@ async def _keepalive_ping(session: BEANSession, interval: int = 20) -> None:
             break
         except Exception:
             break
+
+
+async def _deepgram_keepalive(session: BEANSession) -> None:
+    """Send Deepgram KeepAlive every 8 seconds to prevent idle timeout (1011).
+
+    Deepgram disconnects after ~10–12 s of silence. This loop keeps the
+    connection alive during quiet periods so the robot doesn't need to
+    continuously stream audio just to stay connected.
+    """
+    while True:
+        try:
+            await asyncio.sleep(8)
+            if session.deepgram and session.deepgram.is_connected:
+                await session.deepgram.send_keepalive()
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.debug(
+                "Deepgram keepalive error [session=%s]: %s",
+                session.session_id[:8], exc,
+            )
+            # Don't break — the receive loop handles reconnection.
+            await asyncio.sleep(2)
 
 
 async def _poll_reminders(session: BEANSession) -> None:
