@@ -3,6 +3,11 @@
 # Two services:
 #   1. bean-api       — FastAPI Web Service (WebSocket + HTTP)
 #   2. bean-workers   — Background Worker (reminders, purge, cleanup)
+#
+# Setup:
+#   1. Connect this repo in the Render dashboard
+#   2. Set every `sync: false` env var in the Render dashboard (Environment tab)
+#   3. Add a Render Redis instance and paste its URL into REDIS_URL for both services
 # ============================================================================
 
 services:
@@ -10,11 +15,12 @@ services:
   - type: web
     name: bean-api
     runtime: python
-    plan: starter          # upgrade to standard for production
-    buildCommand: pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev]"
+    plan: standard           # standard = 2GB RAM — required for wav2vec2 + PyTorch
+    buildCommand: pip install --extra-index-url https://download.pytorch.org/whl/cpu -e "."
     startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT --workers 1 --log-level info
     healthCheckPath: /api/v1/health
     envVars:
+      # ── App ────────────────────────────────────────────────────────────────
       - key: ENVIRONMENT
         value: production
       - key: DEBUG
@@ -23,57 +29,127 @@ services:
         value: INFO
       - key: PORT
         value: "8080"
-      # All secrets below — set these in Render dashboard, not here
+      - key: RUN_BACKGROUND_WORKERS
+        value: "false"       # background loops run in bean-workers, not here
+
+      # ── Supabase ───────────────────────────────────────────────────────────
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+
+      # ── LLM (Gemini) ───────────────────────────────────────────────────────
+      - key: GOOGLE_API_KEY
+        sync: false
+
+      # ── Embeddings (OpenAI) ────────────────────────────────────────────────
+      - key: OPENAI_API_KEY
+        sync: false
+
+      # ── STT (Deepgram) ─────────────────────────────────────────────────────
+      - key: DEEPGRAM_API_KEY
+        sync: false
+
+      # ── TTS (ElevenLabs) ───────────────────────────────────────────────────
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        sync: false
+
+      # ── SMS (Twilio) ───────────────────────────────────────────────────────
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+
+      # ── Redis ──────────────────────────────────────────────────────────────
+      - key: REDIS_URL
+        sync: false
+
+      # ── Frontend / CORS ────────────────────────────────────────────────────
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false          # e.g. https://app.yourdomain.com
+      - key: FRONTEND_BASE_URL
+        sync: false          # e.g. https://app.yourdomain.com
+
+      # ── Auth / Security ────────────────────────────────────────────────────
+      - key: RATE_LIMIT_HASH_SALT
+        sync: false          # generate: openssl rand -hex 32
+      - key: OAUTH_STATE_SECRET
+        sync: false          # generate: openssl rand -hex 32
+      - key: INTERNAL_API_KEY
+        sync: false          # generate: openssl rand -hex 32
+
+      # ── Google OAuth (Calendar) ────────────────────────────────────────────
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false          # e.g. https://api.yourdomain.com/api/v1/auth/google/callback
+
+  # ── Background Worker (reminders, purge, session cleanup) ─────────────────
+  - type: worker
+    name: bean-workers
+    runtime: python
+    plan: starter            # workers don't load wav2vec2; 512MB is sufficient
+    buildCommand: pip install --extra-index-url https://download.pytorch.org/whl/cpu -e "."
+    startCommand: python -m background.worker_main
+    envVars:
+      # ── App ────────────────────────────────────────────────────────────────
+      - key: ENVIRONMENT
+        value: production
+      - key: RUN_BACKGROUND_WORKERS
+        value: "true"
+
+      # ── Supabase ───────────────────────────────────────────────────────────
+      # (service role key used for all background DB operations)
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: SUPABASE_JWT_SECRET
         sync: false
+
+      # ── Redis ──────────────────────────────────────────────────────────────
+      - key: REDIS_URL
+        sync: false
+
+      # ── SMS (Twilio) — needed for reminder delivery ────────────────────────
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+
+      # ── Fields required by the production Settings validator ───────────────
+      # The worker does not use these at runtime, but Settings.validate_required_for_production
+      # checks all 13 fields when ENVIRONMENT=production. Set them to the same
+      # values as bean-api to satisfy the validator.
       - key: GOOGLE_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
         sync: false
       - key: DEEPGRAM_API_KEY
         sync: false
       - key: ELEVENLABS_API_KEY
         sync: false
-      - key: ELEVENLABS_VOICE_ID
+      - key: RATE_LIMIT_HASH_SALT
         sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: TWILIO_ACCOUNT_SID
-        sync: false
-      - key: TWILIO_AUTH_TOKEN
-        sync: false
-      - key: TWILIO_FROM_NUMBER
-        sync: false
-      - key: REDIS_URL
+      - key: OAUTH_STATE_SECRET
         sync: false
       - key: INTERNAL_API_KEY
         sync: false
-      - key: RUN_BACKGROUND_WORKERS
-        value: "false"   # workers run in the separate service below
-
-  # ── Background Worker (reminders, purge, session cleanup) ─────────────────
-  - type: worker
-    name: bean-workers
-    runtime: python
-    plan: starter
-    buildCommand: pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev]"
-    startCommand: python -m background.worker_main
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: RUN_BACKGROUND_WORKERS
-        value: "true"
-      - key: SUPABASE_URL
+      - key: CORS_ALLOWED_ORIGINS
         sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
+      - key: FRONTEND_BASE_URL
         sync: false
-      - key: REDIS_URL
-        sync: false
-      - key: TWILIO_ACCOUNT_SID
-        sync: false
-      - key: TWILIO_AUTH_TOKEN
-        sync: false
-      - key: TWILIO_FROM_NUMBER
+      - key: GOOGLE_OAUTH_REDIRECT_URI
         sync: false

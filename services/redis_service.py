@@ -58,3 +58,16 @@ async def redis_set(key: str, value: Any, ttl_seconds: int = 86400) -> None:
 async def redis_delete(key: str) -> None:
     r = await get_redis()
     await r.delete(key)
+
+
+async def close_redis() -> None:
+    """Close the Redis connection on app shutdown."""
+    global _redis
+    if _redis is not None:
+        try:
+            await _redis.aclose()
+        except Exception as exc:
+            logger.warning("Redis close error: %s", exc)
+        finally:
+            _redis = None
+        logger.info("Redis client closed")
