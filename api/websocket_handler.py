@@ -43,7 +43,6 @@ from google.genai import types as genai_types
 
 from agents.orchestrator.agent import orchestrator
 from api.middleware.auth_middleware import extract_token_from_websocket
-from api.middleware.rate_limiter import check_ws_rate_limit
 from services.deepgram_service import DeepgramConnection
 from services.elevenlabs_service import stream_tts_to_websocket
 from services.music_service import pick_song, stream_song_chunks
@@ -436,13 +435,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         "Audio frame too large (%d bytes) [session=%s]",
                         len(audio_bytes), session_id[:8],
                     )
-                    continue
-                if not await check_ws_rate_limit(user_id):
-                    await session.send_json({
-                        "type": "error",
-                        "code": "rate_limited",
-                        "message": "Too many messages — please slow down.",
-                    })
                     continue
                 if session.deepgram and session.deepgram.is_connected:
                     await session.deepgram.send_audio(audio_bytes)
