@@ -262,7 +262,7 @@ class BEANOrchestrator(BaseAgent):
             },
         )
         route = routing_state.get("route", "casual")
-        logger.info("DEBUG: reminder_hint=%s route=%s", state.get("reminder_hint"), route)
+        
         if not state.get("reminder_hint"):
             state["route"] = route
         state["routing_confidence"] = routing_state.get("routing_confidence", 0.5)

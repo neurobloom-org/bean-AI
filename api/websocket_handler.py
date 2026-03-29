@@ -583,6 +583,9 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         session.pending_reminder = None
 
     route: str = session_state.get("route", "casual")
+    if session_state.get("alert_dispatched") == "true" or "crisis helpline" in response_text.lower() or "emergency services" in response_text.lower():
+        route = "alert"
+
     if not response_text:
         response_text = session_state.get("response_text", "")
 
