@@ -24,7 +24,6 @@ from api.routes.alerts import router as alerts_router
 from api.routes.emotions import router as emotions_router
 from api.routes.guardian import router as guardian_router
 from api.routes.internal import router as internal_router
-from api.routes.audio import router as audio_router
 from background.emotion_purge import run_emotion_purge_loop
 from background.reminder_check import run_reminder_check_loop
 from background.session_cleanup import (
@@ -211,7 +210,6 @@ def create_app() -> FastAPI:
     app.include_router(emotions_router)
     app.include_router(guardian_router)
     app.include_router(internal_router)
-    app.include_router(audio_router)
 
     # ── Middleware stack ──────────────────────────────────────────────────────
     # FIX: In FastAPI/Starlette, add_middleware() prepends to the internal list

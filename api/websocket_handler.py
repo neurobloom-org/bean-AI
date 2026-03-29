@@ -43,9 +43,8 @@ from google.genai import types as genai_types
 
 from agents.orchestrator.agent import orchestrator
 from api.middleware.auth_middleware import extract_token_from_websocket
-from services.audio_store import store_audio
 from services.deepgram_service import DeepgramConnection
-from services.elevenlabs_service import synthesize_speech_full
+from services.elevenlabs_service import stream_tts_to_websocket
 from services.music_service import pick_song, stream_song_chunks
 from services.privacy_service import privacy_service
 from services.supabase_client import get_service_client
@@ -650,26 +649,14 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
 
     session.tts_active = True
     try:
-        settings = get_settings()
-        audio_bytes = await synthesize_speech_full(
+        await stream_tts_to_websocket(
             text=response_text.strip(),
+            websocket=session.websocket,
             turn_id=turn_id,
-        )
-        token = store_audio(audio_bytes)
-        audio_url = f"{settings.public_url.rstrip('/')}/audio/{token}"
-        await session.send_json({
-            "type": "play_audio",
-            "url": audio_url,
-            "format": "mp3",
-            "turn_id": turn_id,
-        })
-        logger.info(
-            "TTS audio ready: %d bytes url=%s [session=%s turn=%s]",
-            len(audio_bytes), audio_url, session.session_id[:8], turn_id[:8],
         )
     except Exception as exc:
         logger.error(
-            "TTS failed [session=%s turn=%s]: %s",
+            "TTS stream failed [session=%s turn=%s]: %s",
             session.session_id[:8], turn_id[:8], exc,
         )
         await session.send_json(
