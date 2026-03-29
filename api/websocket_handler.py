@@ -585,6 +585,8 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
     route: str = session_state.get("route", "casual")
     if session_state.get("alert_dispatched") == "true" or "crisis helpline" in response_text.lower() or "emergency services" in response_text.lower():
         route = "alert"
+    elif "i'm here with you" in response_text.lower() or "take your time" in response_text.lower():
+        route = "therapy"
 
     if not response_text:
         response_text = session_state.get("response_text", "")
