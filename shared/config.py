@@ -118,6 +118,9 @@ class Settings(BaseSettings):  # type: ignore[misc]
     ws_ping_interval_seconds: int = 20
     ws_max_audio_frame_bytes: int = 65_536
 
+    # ── Public server URL (used to build streaming audio URLs for ESP32) ─────
+    public_url: str = "http://localhost:8080"
+
     # ── Frontend / OAuth ──────────────────────────────────────────────────────
     frontend_base_url: str = "http://localhost:3000"
     cookie_domain: str | None = None

@@ -43,8 +43,9 @@ from google.genai import types as genai_types
 
 from agents.orchestrator.agent import orchestrator
 from api.middleware.auth_middleware import extract_token_from_websocket
+from services.audio_stream_store import create_audio_stream
 from services.deepgram_service import DeepgramConnection
-from services.elevenlabs_service import stream_tts_to_websocket
+from services.elevenlabs_service import synthesize_speech_stream
 from services.music_service import pick_song, stream_song_chunks
 from services.privacy_service import privacy_service
 from services.supabase_client import get_service_client
@@ -647,14 +648,33 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
     if post_alert:
         await session.send_json({"type": "alert_notification", "message": post_alert})
 
+    settings = get_settings()
+    token, queue = create_audio_stream()
+    audio_url = f"{settings.public_url.rstrip('/')}/audio/stream/{token}"
+
+    # Send URL to ESP32 immediately — it connects while we generate audio.
+    # ESP32 calls audio.connecttohost(url); first audio plays within ~200ms.
+    await session.send_json({
+        "type": "play_audio",
+        "url": audio_url,
+        "format": "mp3",
+        "turn_id": turn_id,
+    })
+
     session.tts_active = True
     try:
-        await stream_tts_to_websocket(
+        async for tts_chunk in synthesize_speech_stream(
             text=response_text.strip(),
-            websocket=session.websocket,
             turn_id=turn_id,
+        ):
+            await queue.put(tts_chunk.audio_chunk)
+        await queue.put(None)  # end-of-stream sentinel
+        logger.info(
+            "TTS stream complete [session=%s turn=%s]",
+            session.session_id[:8], turn_id[:8],
         )
     except Exception as exc:
+        await queue.put(None)  # unblock the HTTP consumer on error
         logger.error(
             "TTS stream failed [session=%s turn=%s]: %s",
             session.session_id[:8], turn_id[:8], exc,
