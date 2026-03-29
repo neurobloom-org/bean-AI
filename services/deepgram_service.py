@@ -112,15 +112,9 @@ class DeepgramConnection:
     # ── URL builder ───────────────────────────────────────────────────────────
 
     def _build_url(self) -> str:
-        """Build the Deepgram streaming WebSocket URL from settings.
-
-        Auth is passed as a query param (?token=...) — Deepgram officially
-        supports this and it avoids websockets library version compatibility
-        issues with custom header arguments (additional_headers vs extra_headers).
-        """
+        """Build the Deepgram streaming WebSocket URL from settings."""
         s = self._settings
         params = {
-            "token": s.deepgram_api_key,
             "model": s.deepgram_model,
             "language": s.deepgram_language,
             "sample_rate": str(s.deepgram_sample_rate),
@@ -134,6 +128,22 @@ class DeepgramConnection:
         }
         query = "&".join(f"{k}={v}" for k, v in params.items())
         return f"wss://api.deepgram.com/v1/listen?{query}"
+
+    def _auth_header_kwarg(self) -> dict:
+        """Return the correct websockets.connect() kwarg for auth headers.
+
+        websockets >= 10.0 uses 'additional_headers'.
+        websockets <  10.0 uses 'extra_headers'.
+        We detect the installed version to stay compatible with both.
+        """
+        import websockets as _ws
+        try:
+            major = int(_ws.__version__.split(".")[0])
+        except Exception:
+            major = 99  # assume new if version parse fails
+        key = "additional_headers" if major >= 10 else "extra_headers"
+        logger.debug("websockets %s detected — using %r for auth header", _ws.__version__, key)
+        return {key: {"Authorization": f"Token {self._settings.deepgram_api_key}"}}
 
     # ── Connection lifecycle ──────────────────────────────────────────────────
 
@@ -163,6 +173,7 @@ class DeepgramConnection:
 
             self._ws = await websockets.connect(
                 url,
+                **self._auth_header_kwarg(),
                 ping_interval=self._settings.ws_ping_interval_seconds,
                 ping_timeout=10,
                 close_timeout=5,
