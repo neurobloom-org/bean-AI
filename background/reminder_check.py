@@ -11,9 +11,9 @@ Then for each task:
     1. Looks up the task owner's phone number from Supabase auth metadata.
        The `tasks` table has no phone_number column — the phone lives in
        auth.users.user_metadata (same pattern used by the guardian alert system).
-    2. Sends an SMS via send_sms().
-    3. On success, atomically marks the task status as 'reminded'.
-    4. On failure, leaves the task as-is so the next cycle retries.
+    2. Delivers reminder into the active conversation if the robot is online.
+    3. Falls back to SMS only when no active session exists.
+    4. Marks delivery and schedules a 30-minute followup for ignored reminders.
 
 Concurrency:
     SMS sends run concurrently up to _MAX_CONCURRENT_SMS at a time using
@@ -33,6 +33,7 @@ import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
+from services.redis_service import redis_set
 from services.supabase_client import get_service_client
 from services.twilio_service import send_sms
 from shared.config import get_settings
@@ -175,9 +176,6 @@ async def _send_and_mark(
                     }
                 )
                 .eq("id", task_id)
-                # Guard: only mark if still pending/snoozed. If the user
-                # completed or cancelled the task between our query and now,
-                # leave it alone.
                 .in_("status", ["pending", "snoozed"])
                 .execute()
             )
@@ -192,8 +190,6 @@ async def _send_and_mark(
                 exc,
             )
     else:
-        # send_sms already logged the failure. Leave status as-is so the
-        # next cycle retries automatically.
         logger.warning(
             "[Reminder] SMS failed for task %s — will retry next cycle",
             str(task_id)[:8],
@@ -204,10 +200,10 @@ async def _send_and_mark(
 
 
 async def check_pending_reminders() -> int:
-    """Send SMS reminders for all tasks whose reminder_at has passed.
+    """Deliver reminders in-conversation when possible, else fall back to SMS.
 
     Returns:
-        Number of SMS messages successfully sent this run.
+        Number of SMS fallback messages successfully scheduled this run.
     """
     now = datetime.now(UTC)
     staleness_cutoff = (now - timedelta(hours=_STALENESS_CUTOFF_HOURS)).isoformat()
@@ -218,20 +214,17 @@ async def check_pending_reminders() -> int:
 
         result = (
             await client.table("tasks")
-            .select("id, user_id, title, description, reminder_at, status")
+            .select("id, user_id, title, description, reminder_at, due_at, status")
             .in_("status", ["pending", "snoozed"])
             .not_.is_("reminder_at", "null")
             .lte("reminder_at", now_iso)
-            .gte("reminder_at", staleness_cutoff)  # skip stale reminders
-            .order("reminder_at", desc=False)  # oldest first
+            .gte("reminder_at", staleness_cutoff)
+            .order("reminder_at", desc=False)
             .limit(_TASK_BATCH_LIMIT)
             .execute()
         )
 
         tasks = result.data or []
-
-        if not tasks:
-            return 0
 
         # Batch phone lookups — one auth call per unique user, not per task.
         unique_user_ids = list(
@@ -242,54 +235,131 @@ async def check_pending_reminders() -> int:
             }
         )
 
-        phone_map = await _fetch_user_phones(unique_user_ids)
+        phone_map = await _fetch_user_phones(unique_user_ids) if unique_user_ids else {}
 
-        if not phone_map:
-            logger.warning(
-                "[Reminder] No phone numbers found for %d user(s) — no SMS sent",
-                len(unique_user_ids),
-            )
-            return 0
+        # Import here to avoid circular import at module level.
+        # _active_sessions is the live registry of connected WebSocket sessions.
+        from api.websocket_handler import _active_sessions  # noqa: PLC0415
 
-        # Fan out sends concurrently, capped by semaphore.
         sem = asyncio.Semaphore(_MAX_CONCURRENT_SMS)
-        send_tasks = []
+        send_tasks: list[asyncio.Task[None]] = []
 
         for task in tasks:
             if not isinstance(task, Mapping):
-                logger.warning("[Reminder] Skipping non-mapping task row")
                 continue
-
             task_id = task.get("id")
             user_id = str(task.get("user_id") or "")
-            reminder_at = task.get("reminder_at")
-
             if not task_id or not user_id:
-                logger.warning("[Reminder] Skipping task with missing id or user_id")
                 continue
 
-            # Log but don't send tasks where reminder_at is missing (shouldn't
-            # happen given our query filter, but defensive check).
-            if not reminder_at:
-                logger.warning(
-                    "[Reminder] Skipping task %s — no reminder_at", str(task_id)[:8]
-                )
-                continue
+            # Write reminder to Redis so the WebSocket handler's
+            # _poll_reminders loop can pick it up for in-conversation delivery.
+            redis_key = f"pending_reminder:{user_id}"
+            await redis_set(
+                redis_key,
+                {
+                    "task_id": str(task_id),
+                    "title": task.get("title"),
+                    "description": task.get("description"),
+                    "due_at": task.get("due_at"),
+                },
+                ttl_seconds=3600,  # 1h — if robot never comes online, expire
+            )
 
-            phone = phone_map.get(user_id)
-            if not phone:
-                logger.warning(
-                    "[Reminder] Skipping task %s — no phone for user %s",
-                    str(task_id)[:8],
+            # Check whether the user has an active WebSocket session right now.
+            # If they do, the _poll_reminders loop will pick up the Redis key
+            # within 15 s, so no SMS is needed.
+            # If they don't, fall back to SMS immediately so the reminder is
+            # not silently lost when the Redis TTL expires.
+            user_has_active_session = any(
+                str(s.get("user_id", "")) == user_id
+                for s in _active_sessions.values()
+            )
+
+            if user_has_active_session:
+                # In-conversation delivery — mark the task and schedule followup.
+                followup_at = (datetime.now(UTC) + timedelta(minutes=30)).isoformat()
+                try:
+                    await (
+                        client.table("tasks")
+                        .update({
+                            "reminder_delivered_at": datetime.now(UTC).isoformat(),
+                            "followup_reminder_at": followup_at,
+                            "status": "reminded",
+                        })
+                        .eq("id", task_id)
+                        .in_("status", ["pending", "snoozed"])
+                        .execute()
+                    )
+                except Exception as exc:
+                    logger.warning("[Reminder] Failed to mark task delivered: %s", exc)
+
+                logger.info(
+                    "[Reminder] Queued in-conversation reminder for user %s task %s",
                     user_id[:8],
+                    str(task_id)[:8],
                 )
+
+            else:
+                # Robot is offline — SMS fallback so the user actually gets notified.
+                phone = phone_map.get(user_id)
+                if phone:
+                    send_tasks.append(
+                        asyncio.create_task(
+                            _send_and_mark(task, phone, sem),
+                            name=f"sms-reminder-{str(task_id)[:8]}",
+                        )
+                    )
+                    logger.info(
+                        "[Reminder] No active session for user %s — queuing SMS for task %s",
+                        user_id[:8],
+                        str(task_id)[:8],
+                    )
+                else:
+                    logger.warning(
+                        "[Reminder] No active session and no phone for user %s task %s — reminder lost",
+                        user_id[:8],
+                        str(task_id)[:8],
+                    )
+
+        # ── Followup pass: tasks where first reminder was delivered but not acknowledged ──
+        followup_result = await (
+            client.table("tasks")
+            .select("id, user_id, title, description, due_at")
+            .in_("status", ["pending", "reminded"])
+            .eq("reminder_acknowledged", False)
+            .not_.is_("followup_reminder_at", "null")
+            .lte("followup_reminder_at", now_iso)
+            .limit(50)
+            .execute()
+        )
+
+        for task in (followup_result.data or []):
+            if not isinstance(task, Mapping):
+                logger.warning("[Reminder] Skipping non-mapping followup task row")
                 continue
 
-            send_tasks.append(
-                asyncio.create_task(
-                    _send_and_mark(task, phone, sem),
-                    name=f"reminder-{str(task_id)[:8]}",
-                )
+            user_id = str(task.get("user_id") or "")
+            if not user_id:
+                continue
+
+            redis_key = f"pending_reminder:{user_id}"
+            await redis_set(
+                redis_key,
+                {
+                    "task_id": str(task.get("id")),
+                    "title": task.get("title"),
+                    "description": task.get("description"),
+                    "due_at": task.get("due_at"),
+                },
+                ttl_seconds=3600,
+            )
+            # Clear followup so it doesn't fire again
+            await (
+                client.table("tasks")
+                .update({"followup_reminder_at": None})
+                .eq("id", task.get("id"))
+                .execute()
             )
 
         if not send_tasks:
@@ -297,7 +367,6 @@ async def check_pending_reminders() -> int:
 
         results = await asyncio.gather(*send_tasks, return_exceptions=True)
 
-        # Count successes by checking exceptions (failures already logged in _send_and_mark).
         errors = sum(1 for r in results if isinstance(r, BaseException))
         sent = len(send_tasks) - errors
 

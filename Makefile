@@ -1,4 +1,4 @@
-.PHONY: dev build up down logs shell test lint format migrate seed clean install
+.PHONY: dev build up down logs shell test test-fast lint format typecheck migrate migrate-local seed clean install
 
 # ── Development ───────────────────────────────────────────────────────────────
 # Install Python dependencies including dev tools
@@ -69,7 +69,13 @@ seed:
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 # Remove Python cache files, compiled files, and temporary test/lint caches
 clean:
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -name "*.pyc" -delete
-	find . -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	find . -type f -name "*.pyo" -delete 2>/dev/null || true
+	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name ".mypy_cache" -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name ".coverage" -delete 2>/dev/null || true
+	find . -type d -name "htmlcov" -exec rm -rf {} + 2>/dev/null || true
+	@echo "Clean complete."

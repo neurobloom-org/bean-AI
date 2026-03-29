@@ -4,12 +4,26 @@ Rule-based filler phrase selection based on detected emotion.
 Returns pre-cached TTS audio references for immediate playback.
 
 Target latency: <50ms (no LLM calls, no external API calls)
-ADK Type: FunctionTool — pure rule-based logic.
+ADK Type: Both FunctionTool (legacy) and BaseAgent (used by orchestrator).
+
+The orchestrator calls `active_listen_agent` (the BaseAgent) in the therapy
+pipeline as a non-blocking pre-step. It selects a short filler phrase (e.g.
+"I hear you...") to fill the latency gap while the therapeutic response is
+generated.
+
+FIX: Added `ActiveListenAgent` (BaseAgent subclass) and `active_listen_agent`
+singleton. The previous version only exported a FunctionTool, so the
+orchestrator's `from agents.active_listen.agent import active_listen_agent`
+raised an ImportError, silently degrading every therapy turn.
 """
 
 import logging
 import random
+from collections.abc import AsyncGenerator
 
+from google.adk.agents import BaseAgent
+from google.adk.agents.invocation_context import InvocationContext
+from google.adk.events import Event, EventActions
 from google.adk.tools import FunctionTool
 
 from shared.enums import EmotionLabel
@@ -131,5 +145,60 @@ def get_filler_phrase(
     return result.model_dump()
 
 
-# ── ADK FunctionTool wrapper ──────────────────────────────────────────────────
+# ── BaseAgent wrapper ─────────────────────────────────────────────────────────
+
+
+class ActiveListenAgent(BaseAgent):
+    """Rule-based filler phrase selector.
+
+    Used by the orchestrator as a non-blocking pre-step in the therapy pipeline.
+    Selects a short acknowledgement phrase based on the user's current emotion
+    and writes it to session state. The phrase can be played immediately while
+    the full therapeutic response is being generated, reducing perceived latency.
+
+    Writes to session state (via state_delta):
+        filler_phrase          — the chosen phrase text
+        filler_audio_cache_key — Supabase tts_cache lookup key
+        last_filler_phrase     — persisted to avoid repetition next turn
+
+    Never raises — any failure falls back silently to empty state values.
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    async def _run_async_impl(
+        self,
+        ctx: InvocationContext,
+    ) -> AsyncGenerator[Event, None]:
+        state = ctx.session.state
+        emotion: str = str(state.get("current_emotion") or "neutral")
+        last_phrase: str = str(state.get("last_filler_phrase") or "")
+
+        try:
+            result = get_filler_phrase(emotion=emotion, last_phrase=last_phrase)
+            phrase: str = result.get("phrase", "")
+            audio_cache_key: str = result.get("audio_cache_key", "")
+        except Exception as exc:
+            logger.warning("ActiveListenAgent: filler phrase selection failed: %s", exc)
+            phrase = ""
+            audio_cache_key = ""
+
+        yield Event(
+            author=self.name,
+            actions=EventActions(
+                state_delta={
+                    "filler_phrase": phrase,
+                    "filler_audio_cache_key": audio_cache_key,
+                    "last_filler_phrase": phrase,
+                }
+            ),
+        )
+
+
+# ── Singletons ────────────────────────────────────────────────────────────────
+
+# BaseAgent singleton used by the orchestrator in the therapy pipeline.
+active_listen_agent = ActiveListenAgent(name="active_listen_agent")
+
+# FunctionTool singleton kept for any legacy ADK tool-based flows.
 get_filler_phrase_tool = FunctionTool(func=get_filler_phrase)

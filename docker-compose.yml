@@ -1,44 +1,71 @@
 # ============================================================================
 # BEAN AI v1 — Docker Compose (Local Development)
-# Note: State lives in Supabase Cloud. No local DB container needed.
+# Note: State lives in Supabase Cloud. Redis runs locally for the hot cache.
 # ============================================================================
 services:
-  bean-api:
-    # Build configuration
-    build:
-      context: .                    # Build context is current directory
-      dockerfile: Dockerfile        # Use the main Dockerfile
-      target: development           # Use the 'development' stage from multi-stage Dockerfile
 
-    container_name: bean-api        # Name of the container
-
-    # Port mapping: host:container
+  # ── Redis — conversation cache + reminder delivery ─────────────────────────
+  # FIX: Redis was missing entirely. shared/conversation_cache.py,
+  # services/redis_service.py, and background/reminder_check.py all depend on
+  # Redis. Without it the app starts but every cache read returns None and
+  # reminder delivery is silently degraded.
+  redis:
+    image: redis:7-alpine
+    container_name: bean-redis
     ports:
-      - "8080:8080"                 # Expose API port for local dev
-
-    # Environment variables from file
-    env_file:
-      - .env                        # Load secret keys, API tokens, etc.
-
-    # Inline environment variables (overrides .env if duplicated)
-    environment:
-      - ENVIRONMENT=development     # Flag for dev environment
-      - DEBUG=true                   # Enable debug logging
-      - LOG_LEVEL=DEBUG              # Log level for detailed output
-
-    # Volumes for live code updates and local caches
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
-      - .:/app                       # Mount current directory for live-reload
-      - /app/__pycache__             # Persist Python cache (optional)
-      - /app/.venv                   # Persist virtual environment (optional)
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
 
-    # Healthcheck ensures container is ready and responsive
+  # ── API server ─────────────────────────────────────────────────────────────
+  bean-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+
+    container_name: bean-api
+
+    ports:
+      - "8080:8080"
+
+    env_file:
+      - .env
+
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      # Override Redis URL to use the local container, not localhost.
+      # The service name "redis" is the hostname inside the Docker network.
+      - REDIS_URL=redis://redis:6379
+
+    volumes:
+      - .:/app
+      - /app/__pycache__
+      - /app/.venv
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v1/health')"]
-      interval: 30s                  # How often to run healthcheck
-      timeout: 10s                   # Max time for one check
-      retries: 3                     # Number of failures before unhealthy
-      start_period: 15s              # Initial grace period before starting checks
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
-    # Restart policy for local dev convenience
-    restart: unless-stopped          # Restart unless explicitly stopped
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+    driver: local

@@ -63,6 +63,7 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
         "/api/v1/auth/login",
         "/api/v1/auth/signup",
         "/api/v1/auth/callback",
+        "/api/v1/auth/google/callback",  # Google OAuth redirect — no JWT present
         "/api/v1/auth/refresh",
         "/docs",
         "/redoc",
@@ -225,13 +226,19 @@ async def _decode_with_jwks(token: str, kid: str) -> dict[str, Any]:
         raise AuthError(f"No matching signing key found for kid={kid!r}")
 
     try:
-        public_key = cast(RSAPublicKey, algorithms.RSAAlgorithm.from_jwk(matching_key))
+        alg_type = matching_key.get("kty", "RSA")
+        if alg_type == "EC":
+            from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
+            public_key = algorithms.ECAlgorithm.from_jwk(matching_key)
+        else:
+            public_key = algorithms.RSAAlgorithm.from_jwk(matching_key)
+
         return cast(
             dict[str, Any],
             pyjwt.decode(
                 token,
                 public_key,
-                algorithms=["RS256"],
+                algorithms=["RS256", "ES256"],
                 audience="authenticated",
                 issuer=_expected_issuer(),
                 options={"require": ["exp", "sub", "aud", "iss"]},
@@ -254,9 +261,9 @@ async def decode_supabase_jwt(token: str) -> dict[str, Any]:
     if alg == "HS256":
         return _decode_with_hs256(token)
 
-    if alg == "RS256":
+    if alg in ("RS256", "ES256"):
         if not kid:
-            raise AuthError("RS256 token missing 'kid'")
+            raise AuthError(f"{alg} token missing 'kid'")
         return await _decode_with_jwks(token, str(kid))
 
     raise AuthError(f"Unsupported JWT algorithm: {alg!r}")
@@ -311,8 +318,23 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):
         try:
             payload = await decode_supabase_jwt(token)
             request.state.user_id = _extract_user_id(payload)
-        except Exception as exc:
-            return JSONResponse(status_code=401, content={"detail": str(exc)})
+        except TokenExpiredError:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Token has expired — please re-authenticate"},
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+            )
+        except AuthError:
+            return JSONResponse(status_code=401, content={"detail": "Invalid token"})
+        except Exception:
+            # Infrastructure failure (JWKS fetch down, network error) — not a
+            # client auth error. Return 503 so clients don't retry with a new
+            # token when the issue is on the server side.
+            logger.exception("Auth middleware infrastructure error on %s", request.url.path)
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Authentication service unavailable"},
+            )
 
         return await call_next(request)
 

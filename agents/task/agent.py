@@ -1,203 +1,209 @@
 """BEAN AI — Task Agent.
 
-Handles reminders, calendar events, and task management.
+Handles reminders and task management.
 Uses Gemini Flash (cheap tier) for task parsing and responses.
 
 Pipeline per turn:
-    1. Parse user intent (create/list/delete reminder)
-    2. Interact with calendar_service or Supabase tasks table
-    3. Confirm action back to user
+    1. If a draft is pending confirmation: check user's response (yes/correction)
+    2. Otherwise: extract a new task draft from user text
+    3. Ask for confirmation before writing to DB
+    4. On confirmation: save to Supabase tasks table
 """
 
 import logging
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
 
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 
-from services.calendar_service import CalendarService, get_calendar_token
 from services.llm_service import generate_json
 from services.supabase_client import get_service_client
+from shared.schemas import TaskDraft
 
 logger = logging.getLogger(__name__)
 
-TASK_SYSTEM = """You are BEAN's task management assistant.
-Parse the user's request and extract task/reminder details.
+TASK_DRAFT_SYSTEM = """Extract a task draft from the user's message.
 
 Respond ONLY with this exact JSON — no markdown, no preamble:
 {
-  "action": "create|list|delete|unknown",
-  "title": "task title if creating",
+  "title": "string",
+  "description": "string or null",
   "due_at": "ISO 8601 datetime string or null",
-  "task_id": "task ID if deleting or null"
+  "reminder_at": "ISO 8601 datetime string or null",
+  "correction_count": 0
+}
+
+If no task can be extracted, return:
+{
+  "title": "",
+  "description": null,
+  "due_at": null,
+  "reminder_at": null,
+  "correction_count": 0
 }"""
 
 
 class TaskAgent(BaseAgent):
-    """Task management agent — reminders and calendar integration."""
+    """Task management agent — reminders and Supabase task storage."""
 
     model_config = {"arbitrary_types_allowed": True}
 
     async def _run_async_impl(
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
-        transcript = ctx.session.state.get("current_transcript", "")
-        user_id = ctx.session.state.get("user_id", "")
+        state = ctx.session.state
+        user_text = str(state.get("current_transcript", ""))
+        pending_draft_raw = state.get("task_pending_draft")
 
-        if not transcript:
-            response = "What would you like me to help you remember?"
-            yield Event(
-                author=self.name,
-                actions=EventActions(state_delta={"response_text": response}),
-            )
-            return
+        # ── CONTINUATION: User is responding to a pending confirmation ────────
+        if pending_draft_raw:
+            import json as _json
 
-        # ── Parse intent with LLM ──
-        try:
-            parsed = await generate_json(
-                task="task_management",
-                prompt=f"User said: {transcript}",
-                system=TASK_SYSTEM,
-            )
-        except Exception as exc:
-            logger.error("Task parsing failed: %s", exc)
-            response = "I had trouble understanding that. Could you try again?"
-            yield Event(
-                author=self.name,
-                actions=EventActions(state_delta={"response_text": response}),
-            )
-            return
-
-        action = parsed.get("action", "unknown")
-        response = await self._handle_action(action, parsed, user_id)
-
-        logger.info(
-            "TaskAgent: action=%s user=%s", action, user_id[:8] if user_id else ""
-        )
-
-        yield Event(
-            author=self.name,
-            actions=EventActions(state_delta={"response_text": response}),
-        )
-
-    async def _handle_action(self, action: str, parsed: dict, user_id: str) -> str:
-        """Handle create, list, delete or unknown task actions."""
-
-        if action == "create":
-            return await self._create_task(parsed, user_id)
-        elif action == "list":
-            return await self._list_tasks(user_id)
-        elif action == "delete":
-            return await self._delete_task(parsed, user_id)
-        else:
-            return "I can help you create reminders, list your tasks, or delete them. What would you like?"
-
-    async def _create_task(self, parsed: dict, user_id: str) -> str:
-        """Create a task in Supabase and optionally in Google Calendar."""
-        title = parsed.get("title", "Reminder")
-        due_at_str = parsed.get("due_at")
-
-        try:
-            due_at = datetime.fromisoformat(due_at_str) if due_at_str else None
-        except (ValueError, TypeError):
-            due_at = None
-
-        try:
-            client = await get_service_client()
-            await (
-                client.table("tasks")
-                .insert(
-                    {
-                        "user_id": user_id,
-                        "title": title,
-                        "due_at": due_at.isoformat() if due_at else None,
-                        "status": "pending",
-                        "created_at": datetime.now(UTC).isoformat(),
-                    }
+            try:
+                draft = TaskDraft.model_validate(
+                    _json.loads(pending_draft_raw)
+                    if isinstance(pending_draft_raw, str)
+                    else pending_draft_raw
                 )
-                .execute()
-            )
+            except Exception:
+                # Corrupt draft — clear and start fresh
+                yield Event(
+                    author=self.name,
+                    actions=EventActions(
+                        state_delta={
+                            "task_pending_draft": None,
+                            "task_pending_confirmation": False,
+                        }
+                    ),
+                )
+                return
 
-            # Try Google Calendar if token available
-            token = await get_calendar_token(user_id)
-            if token and due_at:
-                try:
-                    cal = CalendarService(token)
-                    cal_id = await cal.find_or_create_bean_calendar()
-                    await cal.create_event(
-                        calendar_id=cal_id,
-                        title=title,
-                        event_time=due_at,
-                    )
-                except Exception as exc:
-                    logger.warning("Calendar sync failed (non-fatal): %s", exc)
+            confirmed, updated_draft = await self._check_confirmation(user_text, draft)
 
-            if due_at:
-                return f"Got it! I'll remind you about '{title}' on {due_at.strftime('%B %d at %I:%M %p')}."
+            if confirmed:
+                # User said yes — write to DB and clear state
+                task_id = await self._save_task(
+                    updated_draft, str(state.get("user_id", ""))
+                )
+                yield Event(
+                    author=self.name,
+                    actions=EventActions(
+                        state_delta={
+                            "task_pending_draft": None,
+                            "task_pending_confirmation": False,
+                            "task_just_saved_id": task_id,
+                            "response_text": "Done! I've saved that for you.",
+                        }
+                    ),
+                )
             else:
-                return f"Added '{title}' to your tasks!"
+                # User corrected — update draft silently and re-confirm
+                updated_draft.correction_count += 1
+                confirm_text = self._build_confirmation_prompt(updated_draft)
+                yield Event(
+                    author=self.name,
+                    actions=EventActions(
+                        state_delta={
+                            "task_pending_draft": updated_draft.model_dump_json(),
+                            "task_pending_confirmation": True,
+                            "response_text": confirm_text,
+                        }
+                    ),
+                )
+            return
 
-        except Exception as exc:
-            logger.error("Task creation failed: %s", exc)
-            return "I couldn't save that reminder. Please try again."
-
-    async def _list_tasks(self, user_id: str) -> str:
-        """List pending tasks for the user."""
-        try:
-            client = await get_service_client()
-            result = (
-                await client.table("tasks")
-                .select("title, due_at, status")
-                .eq("user_id", user_id)
-                .eq("status", "pending")
-                .order("due_at")
-                .limit(5)
-                .execute()
+        # ── FRESH: Extract a new task from user text ──────────────────────────
+        draft = await self._extract_task_draft(
+            user_text, str(state.get("user_id", ""))
+        )
+        if draft:
+            confirm_text = self._build_confirmation_prompt(draft)
+            yield Event(
+                author=self.name,
+                actions=EventActions(
+                    state_delta={
+                        "task_pending_draft": draft.model_dump_json(),
+                        "task_pending_confirmation": True,
+                        "response_text": confirm_text,
+                    }
+                ),
+            )
+        else:
+            yield Event(
+                author=self.name,
+                actions=EventActions(
+                    state_delta={
+                        "response_text": "I couldn't figure out the task details. Could you tell me again?",
+                    }
+                ),
             )
 
-            if not result.data:
-                return "You have no pending tasks right now!"
-
-            items = []
-            for task in result.data:
-                title = task.get("title", "")
-                due_at = task.get("due_at")
-                if due_at:
-                    try:
-                        dt = datetime.fromisoformat(due_at)
-                        items.append(f"• {title} — {dt.strftime('%b %d')}")
-                    except (ValueError, TypeError):
-                        items.append(f"• {title}")
-                else:
-                    items.append(f"• {title}")
-
-            return "Here are your tasks:\n" + "\n".join(items)
-
-        except Exception as exc:
-            logger.error("Task list failed: %s", exc)
-            return "I couldn't retrieve your tasks right now."
-
-    async def _delete_task(self, parsed: dict, user_id: str) -> str:
-        """Delete a task by ID."""
-        task_id = parsed.get("task_id")
-        if not task_id:
-            return "Which task would you like to delete?"
-
+    async def _extract_task_draft(self, user_text: str, user_id: str) -> TaskDraft | None:
         try:
-            client = await get_service_client()
-            await (
-                client.table("tasks")
-                .delete()
-                .eq("id", task_id)
-                .eq("user_id", user_id)
-                .execute()
+            result = await generate_json(
+                task="task_draft_extraction",
+                prompt=f"User said: {user_text}\nUser ID: {user_id}",
+                system=TASK_DRAFT_SYSTEM,
             )
-            return "Done! I've removed that task."
+            draft = TaskDraft.model_validate(result)
+            if not draft.title.strip():
+                return None
+            return draft
         except Exception as exc:
-            logger.error("Task delete failed: %s", exc)
-            return "I couldn't delete that task. Please try again."
+            logger.error("Task draft extraction failed: %s", exc)
+            return None
+
+    async def _check_confirmation(
+        self, user_text: str, draft: TaskDraft
+    ) -> tuple[bool, TaskDraft]:
+        """Return (confirmed, updated_draft). LLM decides if user said yes or corrected."""
+        result = await generate_json(
+            task="task_confirmation",
+            prompt=f"Draft: {draft.model_dump_json()}\nUser said: {user_text}",
+            system=(
+                'Determine if the user confirmed the task or corrected it. '
+                'Return JSON: {"confirmed": bool, "title": str, '
+                '"description": str|null, "due_at": str|null, "reminder_at": str|null}'
+            ),
+        )
+        confirmed = bool(result.get("confirmed", False))
+        if not confirmed:
+            # Apply corrections from LLM
+            draft = TaskDraft(
+                title=result.get("title", draft.title),
+                description=result.get("description", draft.description),
+                due_at=result.get("due_at", draft.due_at),
+                reminder_at=result.get("reminder_at", draft.reminder_at),
+                correction_count=draft.correction_count,
+            )
+        return confirmed, draft
+
+    def _build_confirmation_prompt(self, draft: TaskDraft) -> str:
+        parts = [f"Got it — I'll remind you to {draft.title}"]
+        if draft.due_at:
+            parts.append(f"due {draft.due_at}")
+        if draft.reminder_at:
+            parts.append(f"with a reminder at {draft.reminder_at}")
+        return f"{', '.join(parts)}. Does that sound right?"
+
+    async def _save_task(self, draft: TaskDraft, user_id: str) -> str:
+        client = await get_service_client()
+        result = (
+            await client.table("tasks")
+            .insert(
+                {
+                    "user_id": user_id,
+                    "title": draft.title,
+                    "description": draft.description,
+                    "due_at": draft.due_at,
+                    "reminder_at": draft.reminder_at,
+                    "status": "pending",
+                }
+            )
+            .execute()
+        )
+        return str(result.data[0]["id"]) if result.data else ""
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────

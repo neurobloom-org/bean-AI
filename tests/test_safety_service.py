@@ -11,7 +11,17 @@ No real LLM, DB, or Twilio calls.
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
+
+sys.modules["google"] = MagicMock()
+sys.modules["google.genai"] = MagicMock()
+sys.modules["google.genai.types"] = MagicMock()
+sys.modules["google.adk"] = MagicMock()
+sys.modules["google.adk.tools"] = MagicMock()
+sys.modules["twilio"] = MagicMock()
+sys.modules["twilio.rest"] = MagicMock()
+sys.modules["supabase"] = MagicMock()
 
 import pytest
 
@@ -24,11 +34,6 @@ from services.safety_service import (
     get_post_alert_message,
 )
 from shared.exceptions import CrisisDetectedError
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# check_crisis_keywords
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestCheckCrisisKeywords:
@@ -60,7 +65,6 @@ class TestCheckCrisisKeywords:
         assert matches == []
 
     def test_partial_match_in_sentence(self):
-        """Keywords embedded in a longer sentence should still fire."""
         detected, _ = check_crisis_keywords("She told me she wants to hurt myself")
         assert detected is True
 
@@ -72,14 +76,8 @@ class TestCheckCrisisKeywords:
         assert len(matches) >= 2
 
     def test_is_minor_flag_does_not_break(self):
-        """is_minor parameter should not cause errors."""
         detected, _ = check_crisis_keywords("normal text", is_minor=True)
         assert detected is False
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# check_explicit_statement
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestCheckExplicitStatement:
@@ -111,11 +109,6 @@ class TestCheckExplicitStatement:
         assert matches == []
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# get_post_alert_message
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 class TestGetPostAlertMessage:
     def test_returns_non_empty_string(self):
         msg = get_post_alert_message()
@@ -123,28 +116,20 @@ class TestGetPostAlertMessage:
         assert len(msg) > 0
 
     def test_returns_different_messages_over_calls(self):
-        """With enough calls, we should see at least two different messages."""
         messages = {get_post_alert_message() for _ in range(30)}
         assert len(messages) > 1
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SafetyService.assess_turn
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 class TestSafetyServiceAssessTurn:
     @pytest.mark.asyncio
     async def test_no_risk_returns_none_level(self):
         service = SafetyService()
-
         mock_assessment = {
             "alert_level": "none",
             "factors": [],
             "requires_immediate_action": False,
             "suggested_response_type": "supportive",
         }
-
         with patch("services.safety_service.assess_safety", new_callable=AsyncMock, return_value=mock_assessment):
             with patch("services.safety_service.get_service_client", new_callable=AsyncMock):
                 result = await service.assess_turn(
@@ -155,20 +140,17 @@ class TestSafetyServiceAssessTurn:
                     emotion_trend=["happy", "neutral"],
                     turn_number=1,
                 )
-
         assert result["alert_level"] == "none"
 
     @pytest.mark.asyncio
     async def test_crisis_keyword_raises_crisis_detected_error(self):
         service = SafetyService()
-
         mock_assessment = {
             "alert_level": "crisis",
             "factors": ["f1_crisis_keyword"],
             "requires_immediate_action": True,
             "suggested_response_type": "crisis_resources",
         }
-
         with patch("services.safety_service.assess_safety", new_callable=AsyncMock, return_value=mock_assessment):
             with patch("services.safety_service.get_service_client", new_callable=AsyncMock) as mock_client:
                 mock_client.return_value.table.return_value.insert.return_value.execute = AsyncMock(
@@ -187,9 +169,7 @@ class TestSafetyServiceAssessTurn:
     @pytest.mark.asyncio
     async def test_llm_timeout_falls_back_gracefully(self):
         service = SafetyService()
-
         import asyncio
-
         with patch("services.safety_service.assess_safety", new_callable=AsyncMock, side_effect=asyncio.TimeoutError()):
             with patch("services.safety_service.get_service_client", new_callable=AsyncMock):
                 result = await service.assess_turn(
@@ -200,18 +180,12 @@ class TestSafetyServiceAssessTurn:
                     emotion_trend=["neutral"],
                     turn_number=1,
                 )
-
         assert result["alert_level"] == "none"
 
     @pytest.mark.asyncio
     async def test_vulnerability_flag_adds_f4(self):
         service = SafetyService()
-
-        mock_assessment = {
-            "alert_level": "low",
-            "factors": [],
-        }
-
+        mock_assessment = {"alert_level": "low", "factors": []}
         with patch("services.safety_service.assess_safety", new_callable=AsyncMock, return_value=mock_assessment):
             with patch("services.safety_service.get_service_client", new_callable=AsyncMock) as mock_client:
                 mock_client.return_value.table.return_value.insert.return_value.execute = AsyncMock(
@@ -226,15 +200,12 @@ class TestSafetyServiceAssessTurn:
                     turn_number=1,
                     vulnerability_flag=True,
                 )
-
         assert "f4_vulnerability" in result["factors"]
 
     @pytest.mark.asyncio
     async def test_escalation_pattern_adds_f3(self):
         service = SafetyService()
-
         mock_assessment = {"alert_level": "none", "factors": []}
-
         with patch("services.safety_service.assess_safety", new_callable=AsyncMock, return_value=mock_assessment):
             with patch("services.safety_service.get_service_client", new_callable=AsyncMock):
                 result = await service.assess_turn(
@@ -242,16 +213,10 @@ class TestSafetyServiceAssessTurn:
                     session_id="sess-1",
                     user_text="still feeling down",
                     emotion="neutral",
-                    emotion_trend=["sad", "angry", "fearful"],  # 3 consecutive negatives
+                    emotion_trend=["sad", "angry", "fearful"],
                     turn_number=4,
                 )
-
         assert "f3_escalation_pattern" in result["factors"]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Keyword set sanity checks
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 def test_crisis_keywords_all_lowercase():

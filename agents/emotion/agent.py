@@ -500,9 +500,16 @@ async def flush_emotion_logs_now() -> None:
 
 
 async def shutdown_emotion_logging() -> None:
-    """Structured shutdown hook for SIGTERM / app shutdown."""
-    global _log_worker_task, _log_worker_stop_event
+    """Structured shutdown hook for SIGTERM / app shutdown.
 
+    FIX: Removed spurious `global _log_worker_task, _log_worker_stop_event`
+    declaration. This function only READS those module-level variables — it
+    never reassigns them. The `global` keyword is only needed when a name is
+    being *assigned* inside a function. Declaring globals for read-only access
+    is misleading (it implies an assignment that never happens) and triggered
+    a pyflakes warning: 'global _log_worker_task is unused: name is never
+    assigned in scope'.
+    """
     if _log_worker_stop_event is not None:
         _log_worker_stop_event.set()
 
