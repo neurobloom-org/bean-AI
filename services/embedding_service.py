@@ -8,7 +8,9 @@ Privacy:
   - Only the resulting vector is persisted (in episodic_memories table)
 """
 
+import hashlib
 import logging
+import time
 
 from openai import AsyncOpenAI
 from typing import Any
@@ -20,6 +22,13 @@ from shared.exceptions import EmbeddingError
 logger = logging.getLogger(__name__)
 
 _client: AsyncOpenAI | None = None
+
+# In-memory embedding cache: text hash → (embedding, timestamp)
+# Embeddings are deterministic — same text always produces the same vector.
+# TTL of 1 hour avoids stale entries building up across sessions.
+_embedding_cache: dict[str, list[float]] = {}
+_embedding_cache_ts: dict[str, float] = {}
+_EMBEDDING_CACHE_TTL = 3600.0  # 1 hour
 
 
 def _get_client() -> AsyncOpenAI:
@@ -47,6 +56,13 @@ async def get_embedding(text: str) -> list[float]:
     if not text or not text.strip():
         raise EmbeddingError("Cannot embed empty text")
 
+    # Cache lookup — same text always produces the same vector.
+    cache_key = hashlib.sha256(text.encode()).hexdigest()
+    now = time.monotonic()
+    if cache_key in _embedding_cache and now - _embedding_cache_ts[cache_key] < _EMBEDDING_CACHE_TTL:
+        logger.debug("Embedding cache hit (saved OpenAI call)")
+        return _embedding_cache[cache_key]
+
     settings = get_settings()
     client = _get_client()
 
@@ -57,6 +73,8 @@ async def get_embedding(text: str) -> list[float]:
             dimensions=settings.openai_embedding_dimensions,
         )
         embedding = response.data[0].embedding
+        _embedding_cache[cache_key] = embedding
+        _embedding_cache_ts[cache_key] = now
         logger.debug(
             "Embedding generated: dim=%d (source text NOT stored)",
             len(embedding),

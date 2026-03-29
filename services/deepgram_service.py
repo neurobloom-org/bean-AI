@@ -524,7 +524,9 @@ class DeepgramConnection:
             return
 
         self._reconnect_attempts += 1
-        delay = RECONNECT_DELAY_SECONDS * self._reconnect_attempts
+        # Exponential back-off: 2s, 4s, 8s — avoids hammering Deepgram
+        # during sustained outages while recovering faster on transient blips.
+        delay = RECONNECT_DELAY_SECONDS * (2 ** (self._reconnect_attempts - 1))
 
         logger.info(
             "Deepgram: reconnect attempt %d/%d in %.1fs",

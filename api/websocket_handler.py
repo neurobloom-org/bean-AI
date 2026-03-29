@@ -36,6 +36,7 @@ import asyncio
 import json
 import logging
 import uuid
+from collections import deque
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from google.adk.runners import InMemoryRunner
@@ -223,8 +224,12 @@ class MusicPlayer:
                     })
                     return True
 
-                while self._session.tts_active:
-                    await asyncio.sleep(0.05)
+                if self._session.tts_active:
+                    # Wait for TTS to finish — event-driven, no busy-wait CPU waste.
+                    try:
+                        await asyncio.wait_for(self._session._tts_idle.wait(), timeout=60.0)
+                    except asyncio.TimeoutError:
+                        pass
                     if self._stop_event.is_set():
                         return False
 
@@ -273,9 +278,11 @@ class BEANSession:
         "deepgram",
         "music_player",
         "tts_active",
+        "_tts_idle",
         "music_playing_mood",
         "music_playing_volume",
         "pending_reminder",
+        "cached_profile",
     )
 
     def __init__(self, user_id: str, session_id: str, websocket: WebSocket) -> None:
@@ -285,7 +292,7 @@ class BEANSession:
 
         self.transcript_buffer: str = ""
         self.current_emotion: str = "neutral"
-        self.emotion_trend: list[str] = []
+        self.emotion_trend: deque[str] = deque(maxlen=10)
         self.turn_count: int = 0
         self.route_distribution: dict[str, int] = {}
         self.is_processing: bool = False
@@ -293,17 +300,23 @@ class BEANSession:
         self.deepgram: DeepgramConnection | None = None
 
         self.tts_active: bool = False
+        # Event is set when TTS is idle (not active). MusicPlayer waits on this
+        # instead of polling tts_active every 50ms — eliminates busy-wait CPU waste.
+        self._tts_idle: asyncio.Event = asyncio.Event()
+        self._tts_idle.set()  # initially idle
+
         self.music_playing_mood: str | None = None
         self.music_playing_volume: int = 50
         self.pending_reminder: dict | None = None
+        # User profile cached at session start — reused every turn to avoid
+        # one get_user_profile() DB round-trip per turn in _fetch_memory_context.
+        self.cached_profile: dict | None = None
 
         self.music_player = MusicPlayer(self)
 
     def add_emotion(self, emotion: str) -> None:
         self.current_emotion = emotion
-        self.emotion_trend.append(emotion)
-        if len(self.emotion_trend) > 10:
-            self.emotion_trend = self.emotion_trend[-10:]
+        self.emotion_trend.append(emotion)  # deque(maxlen=10) auto-truncates
 
     async def send_json(self, data: dict) -> None:
         try:
@@ -583,7 +596,7 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         "current_transcript": user_text,
         "current_emotion": session.current_emotion,
         "emotion_confidence": "0.7",
-        "recent_emotions": json.dumps([[e, 0.7] for e in session.emotion_trend[-5:]]),
+        "recent_emotions": json.dumps([[e, 0.7] for e in list(session.emotion_trend)[-5:]]),
         "turn_count": session.turn_count,
         "route_distribution": session.route_distribution,
         "recent_transcript": recent,
@@ -592,6 +605,8 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         "pending_reminder": session.pending_reminder,
         "music_playing_mood": session.music_playing_mood,
         "music_playing_volume": session.music_playing_volume,
+        # Pass cached profile so orchestrator skips get_user_profile() DB call.
+        "cached_profile": session.cached_profile,
     }
 
     response_text = ""
@@ -662,6 +677,7 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
     })
 
     session.tts_active = True
+    session._tts_idle.clear()  # signal music player to pause
     try:
         async for tts_chunk in synthesize_speech_stream(
             text=response_text.strip(),
@@ -684,6 +700,7 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         )
     finally:
         session.tts_active = False
+        session._tts_idle.set()  # signal music player it can resume
 
     if route == "music":
         await _handle_music_action(session, session_state)
@@ -863,6 +880,8 @@ async def _load_user_flags(session: BEANSession) -> None:
             session.is_minor = (
                 bool(profile.get("is_minor", False)) or "minor" in diagnosis_tags
             )
+            # Cache the full profile so every turn can skip this DB call.
+            session.cached_profile = profile
     except Exception as exc:
         logger.debug("Failed to load user flags [session=%s]: %s", session.session_id[:8], exc)
 

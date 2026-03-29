@@ -247,29 +247,33 @@ class BEANOrchestrator(BaseAgent):
             )
             return
 
-        # ── Phase 2: Route decision (routing_agent) ───────────────────────────
-        _, routing_state = await _run_sub_agent(
-            routing_agent,
-            user_id=user_id,
-            user_text=user_text,
-            state={
-                "user_id": user_id,
-                "session_id": session_id,
-                "current_transcript": user_text,
-                "current_emotion": emotion,
-                "turn_count": turn_number,
-                "route_distribution": state.get("route_distribution", {}),
-                "reminder_hint": state.get("reminder_hint"),
-                "task_pending_confirmation": state.get("task_pending_confirmation"),
-            },
+        # ── Phase 2+3: Route decision + memory fetch (parallel) ──────────────
+        # These are independent — routing doesn't need memory context and
+        # memory fetch doesn't need the route. Running them concurrently
+        # saves ~200ms every turn (memory fetch overlaps with routing LLM call).
+        cached_profile = state.get("cached_profile")  # set by websocket_handler once per session
+        (_, routing_state), memory_context = await asyncio.gather(
+            _run_sub_agent(
+                routing_agent,
+                user_id=user_id,
+                user_text=user_text,
+                state={
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "current_transcript": user_text,
+                    "current_emotion": emotion,
+                    "turn_count": turn_number,
+                    "route_distribution": state.get("route_distribution", {}),
+                    "reminder_hint": state.get("reminder_hint"),
+                    "task_pending_confirmation": state.get("task_pending_confirmation"),
+                },
+            ),
+            self._fetch_memory_context(user_id, user_text, cached_profile=cached_profile),
         )
         route = routing_state.get("route", "casual")
         state["route"] = route
         state["routing_confidence"] = routing_state.get("routing_confidence", 0.5)
         state["routing_used_fallback"] = routing_state.get("routing_used_fallback", False)
-
-        # ── Phase 3: Memory context ───────────────────────────────────────────
-        memory_context = await self._fetch_memory_context(user_id, user_text)
         state["memory_context"] = memory_context
 
         # ── Phase 4: Dispatch to sub-agent ────────────────────────────────────
@@ -453,14 +457,20 @@ class BEANOrchestrator(BaseAgent):
     # Memory context
     # ─────────────────────────────────────────────────────────────────────────
 
-    async def _fetch_memory_context(self, user_id: str, user_text: str) -> str:
+    async def _fetch_memory_context(
+        self,
+        user_id: str,
+        user_text: str,
+        cached_profile: dict | None = None,
+    ) -> str:
         from services.embedding_service import search_similar_memories
 
         profile_str = ""
         episodic_str = ""
 
         try:
-            profile = await get_user_profile(user_id)
+            # Use session-cached profile if available — avoids one DB round-trip per turn.
+            profile = cached_profile or await get_user_profile(user_id)
             if profile:
                 profile_obj = UserProfileSchema(**profile)
                 profile_str = profile_obj.to_context_string()
@@ -620,18 +630,24 @@ class BEANOrchestrator(BaseAgent):
         from shared.conversation_cache import append_turn
 
         try:
-            await privacy_service.store_transcript_turn(
-                session_id=session_id,
-                user_id=user_id,
-                speaker="user",
-                text=user_text,
+            # Both DB writes are independent — run them in parallel.
+            await asyncio.gather(
+                privacy_service.store_transcript_turn(
+                    session_id=session_id,
+                    user_id=user_id,
+                    speaker="user",
+                    text=user_text,
+                ),
+                privacy_service.store_transcript_turn(
+                    session_id=session_id,
+                    user_id=user_id,
+                    speaker="assistant",
+                    text=response_text,
+                ),
+                return_exceptions=True,
             )
-            await privacy_service.store_transcript_turn(
-                session_id=session_id,
-                user_id=user_id,
-                speaker="assistant",
-                text=response_text,
-            )
+            # Cache appends must stay sequential — append_turn does read-modify-write
+            # on the same Redis key; concurrent calls would race and drop one turn.
             await append_turn(session_id, "user", user_text)
             await append_turn(session_id, "bean", response_text)
         except Exception as exc:
