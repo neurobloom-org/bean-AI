@@ -455,6 +455,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         )
                     await session.deepgram.send_audio(audio_bytes)
 
+            elif message.get("type") == "websocket.disconnect":
+                logger.info(
+                    "WebSocket disconnected: user=%s session=%s turns=%d",
+                    user_id[:8], session_id[:8], session.turn_count,
+                )
+                break
+
             elif message.get("text"):
                 try:
                     data = json.loads(message["text"])
@@ -471,7 +478,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             user_id[:8], session_id[:8], session.turn_count,
         )
     except Exception as exc:
-        logger.error("WebSocket error [session=%s]: %s", session_id[:8], exc)
+        if "disconnect message has been received" in str(exc):
+            logger.info(
+                "WebSocket disconnected: user=%s session=%s turns=%d",
+                user_id[:8], session_id[:8], session.turn_count,
+            )
+        else:
+            logger.error("WebSocket error [session=%s]: %s", session_id[:8], exc)
     finally:
         reminder_task.cancel()
         keepalive_task.cancel()
