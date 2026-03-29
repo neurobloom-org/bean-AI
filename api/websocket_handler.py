@@ -532,7 +532,17 @@ async def _handle_utterance_end(session: BEANSession) -> None:
     session.is_processing = True
     session.transcript_buffer = ""
     try:
-        await _process_turn(session, user_text)
+        await asyncio.wait_for(_process_turn(session, user_text), timeout=45.0)
+    except asyncio.TimeoutError:
+        logger.error(
+            "Turn processing timed out after 45s [session=%s]",
+            session.session_id[:8],
+        )
+        await session.send_json({
+            "type": "error",
+            "code": "timeout",
+            "message": "Took too long to respond. Please try again.",
+        })
     except Exception as exc:
         logger.error("Turn processing failed [session=%s]: %s", session.session_id[:8], exc)
         await session.send_json({
@@ -551,6 +561,10 @@ async def _handle_utterance_end(session: BEANSession) -> None:
 
 async def _process_turn(session: BEANSession, user_text: str) -> None:
     """Run the full orchestrator pipeline for one conversation turn."""
+    logger.info(
+        "Processing turn: %r [session=%s]",
+        user_text[:60], session.session_id[:8],
+    )
     session.turn_count += 1
     turn_id = str(uuid.uuid4())
 
