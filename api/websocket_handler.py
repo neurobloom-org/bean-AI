@@ -515,6 +515,11 @@ async def _handle_transcript(session: BEANSession, transcript_result) -> None:
         "text": text,
         "confidence": round(transcript_result.confidence, 2),
     })
+    # Trigger processing immediately on final transcript rather than waiting
+    # for UtteranceEnd, which Deepgram does not reliably send after Finalize.
+    # The is_processing guard in _handle_utterance_end prevents double-processing
+    # if UtteranceEnd also arrives.
+    _fire_and_forget(_handle_utterance_end(session))
 
 
 async def _handle_utterance_end(session: BEANSession) -> None:
