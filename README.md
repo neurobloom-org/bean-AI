@@ -22,6 +22,7 @@ BEAN (Behavioral Emotional Assistant Node) is a privacy-first AI companion robot
 14. [Privacy & Safety Model](#14-privacy--safety-model)
 15. [Cost Reference](#15-cost-reference)
 16. [Local Development](#16-local-development)
+17. [Performance Design](#17-performance-design)
 
 ---
 
@@ -58,20 +59,22 @@ The robot sends raw PCM audio over a persistent WebSocket. The server handles ev
 ### Conversation Turn Flow
 
 ```
-1. Robot mic captures voice
+1. Robot mic captures voice (push-to-talk: user holds button)
 2. PCM16 audio chunks sent to server via WebSocket (binary frames)
 3. Server forwards chunks to Deepgram in real time
 4. Deepgram returns partial + final transcripts
-5. On utterance end (1 second silence), orchestrator runs
-6. Orchestrator pipeline:
+5. Robot releases button → sends {"type": "stop_recording"}
+6. Server sends Deepgram Finalize → forces final transcript flush
+7. Orchestrator pipeline (phases 2+3 run in parallel):
    a. Safety pre-screen (keyword check, no LLM cost)
-   b. Route decision (Gemini Flash) → casual / therapy / task / music / alert
-   c. Memory context fetch (Supabase pgvector search)
+   b. Route decision (Gemini Flash) ──┐ parallel
+   c. Memory context fetch (pgvector) ─┘
    d. Sub-agent responds (Flash or Pro depending on route)
    e. Post-response: safety score, memory write, transcript store (async)
-7. Response text sent to robot as JSON
-8. ElevenLabs TTS audio streamed to robot as binary frames
-9. Robot plays audio through speaker
+8. Response text sent to robot as JSON
+9. Server creates chunked HTTP audio stream, sends URL to robot immediately
+10. Robot calls audio.connecttohost(url) — starts buffering while server generates
+11. ElevenLabs TTS streams MP3 chunks into queue → robot receives and plays
 ```
 
 ### Two-Service Split
@@ -135,7 +138,8 @@ bean-AI/
 │       ├── alerts.py        # Safety alerts list + acknowledge
 │       ├── emotions.py      # Emotion history + daily summary
 │       ├── guardian.py      # Guardian dashboard (patient oversight)
-│       └── internal.py      # Admin endpoints (X-Internal-Key)
+│       ├── internal.py      # Admin endpoints (X-Internal-Key)
+│       └── audio.py         # GET /audio/stream/{token} — chunked MP3 for ESP32
 │
 ├── background/
 │   ├── worker_main.py       # Entry point for bean-workers service
@@ -148,7 +152,8 @@ bean-AI/
 │   ├── llm_service.py       # Gemini Flash/Pro tiered wrapper
 │   ├── deepgram_service.py  # Deepgram WebSocket connection
 │   ├── elevenlabs_service.py # TTS streaming + caching
-│   ├── embedding_service.py # OpenAI embeddings
+│   ├── embedding_service.py # OpenAI embeddings (with in-memory cache)
+│   ├── audio_stream_store.py # asyncio.Queue bridge: TTS producer → ESP32 HTTP consumer
 │   ├── music_service.py     # Pick songs + stream from Supabase Storage
 │   ├── rag_service.py       # CBT/DBT technique retrieval (pgvector)
 │   ├── safety_service.py    # Crisis keyword scanner + alert scoring
@@ -338,6 +343,11 @@ GET    /api/v1/guardian/patients/{patient_id}/emotions        — patient emotio
 
 Guardians see aggregated labels only — never raw transcripts.
 
+### Audio Stream (public, token-gated)
+```
+GET    /audio/stream/{token}               — Chunked MP3 stream for ESP32 TTS playback
+```
+
 ### Health Check (public)
 ```
 GET    /api/v1/health                      — Supabase + Redis status
@@ -377,17 +387,20 @@ Server immediately sends:
 
 **Binary frame:** Raw PCM16 audio
 - Format: 16-bit signed integer, mono, 16kHz sample rate
-- Send continuously while user is speaking
-- Recommended chunk size: ~3.2 KB (200ms of audio)
+- Send while user is speaking (push-to-talk)
+- Recommended chunk size: ~3.2 KB (100ms of audio)
 
 **JSON control messages:**
 ```json
-{"type": "ping"}
+{"type": "stop_recording"}
+{"type": "pong"}
 {"type": "emotion_result", "emotion": "sad", "confidence": 0.85}
 {"type": "music_status", "status": "playing", "genre": "calm"}
 {"type": "robot_status", "battery_level": 85, "wifi_rssi": -60}
 {"type": "end_session"}
 ```
+
+> `stop_recording` is critical — send it when the user releases the push-to-talk button. It triggers Deepgram Finalize, which flushes the final transcript and starts the AI pipeline.
 
 ### Server → Robot Messages
 
@@ -402,22 +415,33 @@ Server immediately sends:
 {"type": "response_text", "text": "I'm here with you.", "route": "therapy", "turn_id": "uuid"}
 ```
 
-**TTS audio (binary + JSON sentinels):**
-```
-{"type": "tts_start", "turn_id": "uuid"}
-<binary audio chunk>
-<binary audio chunk>
-...
-{"type": "tts_end", "turn_id": "uuid"}
+**TTS audio — chunked HTTP streaming:**
+
+The server sends a URL before TTS generation starts. The robot connects to it immediately via HTTP and streams MP3 audio as chunks arrive from ElevenLabs. This approach gives ~200ms time-to-first-audio.
+
+```json
+{
+  "type": "play_audio",
+  "url": "https://bean-api-jolw.onrender.com/audio/stream/<token>",
+  "format": "mp3",
+  "turn_id": "uuid"
+}
 ```
 
-**Music streaming:**
+Robot must call:
+```cpp
+audio.connecttohost(url);  // ESP32-audioI2S library
+```
+
+> Do NOT wait for TTS to finish before connecting. The whole point is to connect immediately and start buffering while the server is still generating. The stream closes automatically when the response is complete.
+
+**Music streaming (binary WebSocket frames):**
 ```json
 {"type": "music_start", "song_id": "uuid", "title": "Calm Rain", "mood": "calm"}
 ```
 ```
-<binary 8KB audio chunk>
-<binary 8KB audio chunk>
+<binary 8KB MP3 chunk>
+<binary 8KB MP3 chunk>
 ...
 ```
 ```json
@@ -427,13 +451,15 @@ Server immediately sends:
 {"type": "music_unavailable", "mood": "calm", "message": "No calm songs available yet."}
 ```
 
+> Note: Music is delivered as binary WebSocket frames (different from TTS which uses HTTP streaming). Binary frames on the WebSocket are always music.
+
 **Keepalive:**
 ```json
 {"type": "ping", "timestamp": "2026-03-29T05:50:47Z"}
 ```
-Robot should respond:
+Robot must respond:
 ```json
-{"type": "pong", "timestamp": "..."}
+{"type": "pong"}
 ```
 
 **Errors:**
@@ -450,43 +476,47 @@ Robot should respond:
 Robot                              BEAN API
   |                                    |
   |── connect wss://.../ws ───────────▶|
-  |◀─ {"type":"connected"} ────────────|
-  |                                    |── Deepgram STT connect
+  |◀─ {"type":"connected"} ────────────|── Deepgram connect
+  |                                    |── load user profile (cached for session)
   |                                    |
-  |── [PCM16 binary chunks] ──────────▶|──▶ Deepgram
+  |  [user holds button]               |
+  |── [PCM16 binary chunks] ──────────▶|──▶ Deepgram STT
   |── [PCM16 binary chunks] ──────────▶|
   |◀─ {"type":"transcript_partial"} ───|◀── partial text
   |── [PCM16 binary chunks] ──────────▶|
-  |◀─ {"type":"transcript_final"} ─────|◀── final text
+  |  [user releases button]            |
+  |── {"type":"stop_recording"} ──────▶|── Deepgram Finalize
+  |◀─ {"type":"transcript_final"} ─────|◀── final text flushed
   |                                    |
-  |                                    |── [1s silence detected]
-  |                                    |── Orchestrator runs
-  |                                    |── Gemini Flash (route)
-  |                                    |── Gemini Pro (therapy)
-  |                                    |── [async: safety, memory]
+  |                                    |── Orchestrator runs:
+  |                                    |   ├─ routing (Gemini Flash) ──┐ parallel
+  |                                    |   └─ memory fetch (pgvector) ─┘
+  |                                    |   └─ sub-agent (Flash or Pro)
+  |                                    |   └─ [async: safety, memory, transcript]
   |                                    |
   |◀─ {"type":"response_text"} ────────|
-  |◀─ {"type":"tts_start"} ────────────|──▶ ElevenLabs TTS
-  |◀─ [binary audio] ──────────────────|◀── audio stream
-  |◀─ [binary audio] ──────────────────|
-  |◀─ {"type":"tts_end"} ──────────────|
-  |                                    |
-  |── plays audio on speaker           |
+  |◀─ {"type":"play_audio","url":"..."} |── ElevenLabs TTS starts streaming
+  |── audio.connecttohost(url) ────────▶── GET /audio/stream/<token>
+  |◀─────── MP3 chunks (HTTP) ─────────|◀── chunks arrive as generated
+  |── plays audio immediately          |
+  |                                    |── stream ends automatically
 ```
 
 ### ESP32 Firmware Checklist
 
 ```
-1. Connect WebSocket with device_id query param
-2. Send PCM16 chunks continuously from mic while user speaks
-3. On {"type": "tts_start"}: mute mic (don't send audio while robot speaks)
-4. On binary frames received: buffer and play through speaker
-5. On {"type": "tts_end"}: unmute mic, resume recording
-6. On {"type": "music_start"}: prepare to receive and play binary chunks
-7. On {"type": "music_stopped"}: stop speaker
-8. Send {"type": "ping"} every 30s to keep connection alive
-9. On {"type": "pong"}: connection confirmed alive
-10. Send {"type": "robot_status", "battery_level": N, "wifi_rssi": N} periodically
+1.  Connect WebSocket: wss://bean-api-jolw.onrender.com/ws?device_id=YOUR_ID
+2.  Wait for {"type": "connected"} before doing anything
+3.  While user holds button: send PCM16 binary chunks from mic
+4.  When user releases button: send {"type": "stop_recording"}
+5.  On {"type": "play_audio"}: call audio.connecttohost(url) IMMEDIATELY
+6.  On {"type": "ping"}: respond with {"type": "pong"}
+7.  On binary WebSocket frames: these are music chunks — buffer and play
+8.  On {"type": "music_start"}: prepare speaker for incoming binary chunks
+9.  On {"type": "music_stopped"}: stop speaker
+10. On {"type": "music_volume", "volume": N}: set volume 0-100
+11. Send {"type": "robot_status", "battery_level": N, "wifi_rssi": N} every 60s
+12. Send {"type": "emotion_result", "emotion": "...", "confidence": 0.85} when detected
 ```
 
 ### Device Registration
@@ -516,14 +546,25 @@ Two-tier Gemini routing:
 - Persistent WebSocket per session (not per audio chunk)
 - PCM16, 16kHz, mono, nova-2 model
 - Endpointing: 500ms silence → partial final, 1000ms → utterance end
-- Auto-reconnect: up to 3 attempts (2s, 4s, 6s backoff)
+- KeepAlive sent every 8s to prevent idle 1011 disconnect
+- Finalize sent on `stop_recording` — forces final transcript flush for push-to-talk
+- Auto-reconnect: up to 3 attempts with exponential backoff (2s, 4s, 8s)
 - Privacy: audio exists only in RAM transit, never written to disk
 
 ### ElevenLabs Service (`services/elevenlabs_service.py`)
 - Turbo v2 model (low latency)
-- Streams audio chunks directly to robot WebSocket
+- Streams MP3 chunks into an `asyncio.Queue` (see `audio_stream_store.py`)
+- Robot receives audio via `GET /audio/stream/{token}` (chunked HTTP, not WebSocket binary)
 - TTS cache: SHA-256(voice_id + text) → Supabase (7-day TTL, avoids re-generating same phrases)
 - Timeouts: 10s first chunk, 8s per-chunk, 30s total
+
+### Audio Stream Store (`services/audio_stream_store.py`)
+- Bridges ElevenLabs TTS producer and ESP32 HTTP consumer via `asyncio.Queue`
+- One queue per turn, keyed by a UUID token
+- `create_audio_stream()` → returns `(token, queue)`
+- `drain_queue(token)` → async generator yielding chunks to `StreamingResponse`
+- 30s timeout on idle queue — auto-cleans on stream end or timeout
+- Decouples TTS generation speed from ESP32 connection speed
 
 ### Music Service (`services/music_service.py`)
 - Songs stored in Supabase Storage bucket `bean-music`
@@ -621,8 +662,11 @@ FRONTEND_BASE_URL=https://your-frontend.com
 GOOGLE_OAUTH_CLIENT_ID=...
 GOOGLE_OAUTH_CLIENT_SECRET=...
 GOOGLE_OAUTH_REDIRECT_URI=https://bean-api-jolw.onrender.com/api/v1/auth/google/callback
+PUBLIC_URL=https://bean-api-jolw.onrender.com
 RUN_BACKGROUND_WORKERS=false
 ```
+
+> `PUBLIC_URL` is required for TTS audio delivery. The server uses it to build the `play_audio` URL sent to the ESP32. Without it, the URL will point to `localhost` and the robot cannot reach the audio stream.
 
 ### Required — bean-workers Only
 ```
@@ -692,30 +736,54 @@ wss://bean-api-jolw.onrender.com/ws?device_id=YOUR_DEVICE_ID
 
 ### Minimal Arduino/ESP-IDF Pseudocode
 ```cpp
+#include <ESP32-audioI2S.h>  // for audio.connecttohost()
+
+Audio audio;
+
 // 1. Connect WiFi
 // 2. Open WebSocket
 ws.connect("wss://bean-api-jolw.onrender.com/ws?device_id=ESP32_BEAN_001");
 
-// 3. On connect, wait for {"type":"connected"}
+// 3. Wait for {"type":"connected"}
 
-// 4. Capture mic and stream
-while (session_active) {
-    int16_t audio[3200]; // 200ms at 16kHz
-    mic.read(audio, sizeof(audio));
-    ws.send_binary(audio, sizeof(audio));
+// 4. Push-to-talk: while button held, stream PCM16 from mic
+while (button_pressed) {
+    int16_t pcm[1600]; // 100ms at 16kHz mono
+    mic.read(pcm, sizeof(pcm));
+    ws.send_binary(pcm, sizeof(pcm));
 }
+// Button released — tell server to process
+ws.send_text("{\"type\":\"stop_recording\"}");
 
-// 5. On binary received → play on speaker
+// 5. On binary WebSocket frame received → music chunks (not TTS)
 ws.on_binary([](uint8_t* data, size_t len) {
-    speaker.play(data, len);
+    speaker.play(data, len);  // music only
 });
 
-// 6. On JSON received → parse type field
+// 6. On JSON message received
 ws.on_text([](String msg) {
-    if (type == "tts_start") mic.mute();
-    if (type == "tts_end")   mic.unmute();
-    if (type == "music_start") display.show(title);
-    if (type == "music_stopped") speaker.stop();
+    String type = parse_json(msg, "type");
+
+    if (type == "play_audio") {
+        // TTS response — connect to HTTP stream immediately
+        String url = parse_json(msg, "url");
+        audio.connecttohost(url.c_str());  // ESP32-audioI2S streams MP3
+    }
+    if (type == "response_text") {
+        display.show(parse_json(msg, "text"));
+    }
+    if (type == "music_start") {
+        display.show(parse_json(msg, "title"));
+    }
+    if (type == "music_stopped") {
+        speaker.stop();
+    }
+    if (type == "music_volume") {
+        audio.setVolume(parse_json(msg, "volume").toInt());
+    }
+    if (type == "ping") {
+        ws.send_text("{\"type\":\"pong\"}");
+    }
 });
 ```
 
@@ -827,6 +895,37 @@ pytest tests/
 ```bash
 python test_esp32_sim.py --email your@email.com --password yourpass
 ```
+
+---
+
+## 17. Performance Design
+
+### Latency Breakdown (per turn)
+
+| Stage | Typical | Notes |
+|---|---|---|
+| Deepgram STT | 100–300ms | Streaming, result arrives before user finishes |
+| Routing + memory fetch | 400–600ms | **Run in parallel** — not sequential |
+| Sub-agent (Gemini Flash) | 500–1500ms | Dominant cost — external API |
+| ElevenLabs first chunk | 200–400ms | Streaming — ESP32 starts playing immediately |
+| HTTP delivery | ~50ms | Chunked stream, no buffering |
+
+### Optimizations in Place
+
+| Optimization | Where | Saves |
+|---|---|---|
+| Routing + memory fetch in parallel | `orchestrator/agent.py` | ~200ms/turn |
+| User profile cached at session start | `websocket_handler.py` | ~100ms/turn |
+| Parallel transcript DB writes | `orchestrator/agent.py` | ~40ms/turn |
+| Embedding in-memory cache (1hr TTL) | `embedding_service.py` | ~200ms on hit |
+| TTS chunked HTTP — URL sent before generation | `websocket_handler.py` | ~200ms time-to-first-audio |
+| Event-driven TTS/music sync | `websocket_handler.py` | Eliminates 20 poll wakeups/sec |
+| Deepgram exponential backoff | `deepgram_service.py` | Faster reconnect on blips |
+| Deepgram KeepAlive every 8s | `websocket_handler.py` | Prevents 1011 idle disconnect |
+
+### Deployment Region
+
+Deploy in **Singapore** (closest region for Southeast Asia) to reduce external API round-trip overhead by ~150ms per turn. Region cannot be changed after service creation on Render — requires redeploy.
 
 ---
 
