@@ -1,61 +1,82 @@
 #!/usr/bin/env python3
 """
-BEAN AI — Fake ESP32 Simulator
-Simulates the ESP32 hardware client so you can test the full pipeline
-(STT → Orchestrator → TTS) from your PC without physical hardware.
+BEAN AI — ESP32 Simulator with Laptop Audio Playback
 
-Requirements:
-    pip install websockets pyaudio supabase python-dotenv
+Simulates the ESP32 robot from your laptop:
+  - Mic input  → PCM16 → WebSocket → Server → Deepgram STT
+  - Server     → play_audio URL    → HTTP MP3 stream → Laptop speakers
+
+Push-to-talk:
+    Press ENTER to start recording
+    Press ENTER again to stop and trigger AI response
+    Ctrl+C to quit
 
 Usage:
-    python test_esp32_sim.py --email you@email.com --password yourpassword
-    python test_esp32_sim.py --email you@email.com --password yourpassword --url ws://localhost:8080/ws
+    python test_esp32_sim.py --email you@email.com --password yourpass
+    python test_esp32_sim.py --email you@email.com --password yourpass --url ws://localhost:8080/ws
+    python test_esp32_sim.py --email you@email.com --password yourpass --wav test.wav
+    python test_esp32_sim.py --device-id ESP32_BEAN_001 --url ws://localhost:8080/ws
+
+Dependencies:
+    pip install websockets pyaudio pygame httpx python-dotenv
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import io
 import json
 import logging
 import os
 import sys
+import tempfile
 import threading
 import wave
 from pathlib import Path
 
-# ── Allow running from project root ──────────────────────────────────────────
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s - %(message)s",
 )
-logger = logging.getLogger("esp32_sim")
+logger = logging.getLogger("bean_sim")
 
-# ── Audio settings (must match what Deepgram expects) ─────────────────────────
-SAMPLE_RATE = 16000      # 16kHz
-CHANNELS = 1             # Mono
-SAMPLE_WIDTH = 2         # 16-bit PCM
-CHUNK_SIZE = 3200        # 200ms chunks (3200 bytes = 1600 samples * 2 bytes)
+# ── Audio settings (must match Deepgram config) ───────────────────────────────
+SAMPLE_RATE = 16000   # Hz
+CHANNELS    = 1       # mono
+SAMPLE_WIDTH = 2      # 16-bit
+CHUNK_SIZE  = 1600    # 100ms of audio at 16kHz (1600 samples × 2 bytes = 3200 bytes)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="BEAN AI Fake ESP32 Simulator")
-    parser.add_argument("--email", required=True, help="Supabase user email")
-    parser.add_argument("--password", required=True, help="Supabase user password")
-    parser.add_argument(
+    p = argparse.ArgumentParser(description="BEAN AI ESP32 Simulator")
+    auth = p.add_mutually_exclusive_group()
+    auth.add_argument("--email",     help="Supabase account email")
+    auth.add_argument("--device-id", help="Pre-registered device_id (skips JWT auth)")
+    p.add_argument("--password", help="Supabase account password (required with --email)")
+    p.add_argument(
         "--url",
         default="ws://localhost:8080/ws",
-        help="WebSocket URL (default: ws://localhost:8080/ws)",
+        help="WebSocket server URL (default: ws://localhost:8080/ws)",
     )
-    parser.add_argument(
+    p.add_argument(
         "--wav",
         default=None,
-        help="Optional: path to a WAV file to send instead of live mic",
+        help="Path to a 16kHz mono WAV file to send instead of live mic",
     )
-    return parser.parse_args()
+    p.add_argument(
+        "--volume",
+        type=int,
+        default=80,
+        help="Playback volume 0-100 (default 80)",
+    )
+    return p.parse_args()
 
 
 def load_env() -> None:
@@ -66,318 +87,454 @@ def load_env() -> None:
         pass
 
 
-async def get_supabase_token(email: str, password: str) -> str:
-    """Sign in to Supabase and return JWT access token."""
+# ─────────────────────────────────────────────────────────────────────────────
+# Auth
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+async def get_jwt(email: str, password: str) -> str:
+    """Sign in to Supabase and return a JWT access token."""
     import httpx
 
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_anon_key = os.environ.get("SUPABASE_ANON_KEY", "")
-
-    if not supabase_url or not supabase_anon_key:
+    url  = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    anon = os.environ.get("SUPABASE_ANON_KEY", "")
+    if not url or not anon:
         raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY must be set in .env")
 
-    url = f"{supabase_url.rstrip('/')}/auth/v1/token?grant_type=password"
-    headers = {
-        "apikey": supabase_anon_key,
-        "Content-Type": "application/json",
-    }
-    body = {"email": email, "password": password}
-
     async with httpx.AsyncClient() as client:
-        response = await client.post(url, json=body, headers=headers)
-
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"Supabase sign-in failed ({response.status_code}): {response.text}"
+        r = await client.post(
+            f"{url}/auth/v1/token?grant_type=password",
+            headers={"apikey": anon, "Content-Type": "application/json"},
+            json={"email": email, "password": password},
         )
+    if r.status_code != 200:
+        raise RuntimeError(f"Auth failed ({r.status_code}): {r.text}")
 
-    data = response.json()
-    token = data.get("access_token")
+    token = r.json().get("access_token")
     if not token:
-        raise RuntimeError(f"No access_token in response: {data}")
+        raise RuntimeError(f"No access_token in response: {r.text}")
 
     logger.info("✓ Signed in as %s", email)
     return token
 
 
-class AudioPlayer:
-    """Plays PCM16 audio through speakers."""
+# ─────────────────────────────────────────────────────────────────────────────
+# MP3 playback via pygame
+# ─────────────────────────────────────────────────────────────────────────────
 
-    def __init__(self):
-        self._buffer = bytearray()
-        self._lock = threading.Lock()
-        self._playing = False
-        self._thread: threading.Thread | None = None
 
-    def add_chunk(self, data: bytes) -> None:
-        with self._lock:
-            self._buffer.extend(data)
-        if not self._playing:
-            self._start()
+def _init_pygame(volume: int) -> bool:
+    """Initialise pygame mixer. Returns True if available."""
+    try:
+        import pygame
+        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
+        pygame.mixer.music.set_volume(max(0, min(100, volume)) / 100)
+        logger.info("✓ Audio output ready (pygame mixer)")
+        return True
+    except Exception as exc:
+        logger.warning("pygame not available — audio will not play: %s", exc)
+        logger.warning("Install with: pip install pygame")
+        return False
 
-    def _start(self) -> None:
-        self._playing = True
-        self._thread = threading.Thread(target=self._play_loop, daemon=True)
-        self._thread.start()
 
-    def _play_loop(self) -> None:
+async def play_mp3_from_url(url: str) -> None:
+    """Download MP3 stream from URL and play through laptop speakers."""
+    try:
+        import httpx
+        import pygame
+    except ImportError as exc:
+        logger.warning("Cannot play audio: %s", exc)
+        return
+
+    print("  🔊 Downloading audio...", end="", flush=True)
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Stream the HTTP response (chunked) and buffer it
+            audio_bytes = b""
+            async with client.stream("GET", url) as response:
+                if response.status_code == 404:
+                    print(" [stream not found]")
+                    return
+                async for chunk in response.aiter_bytes(chunk_size=4096):
+                    audio_bytes += chunk
+
+        if not audio_bytes:
+            print(" [empty response]")
+            return
+
+        # Write to a temp MP3 file and play with pygame
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(audio_bytes)
+            tmp_path = f.name
+
+        print(f" {len(audio_bytes)//1024}KB — playing...", end="", flush=True)
+
+        pygame.mixer.music.load(tmp_path)
+        pygame.mixer.music.play()
+
+        # Wait for playback to finish
+        while pygame.mixer.music.get_busy():
+            await asyncio.sleep(0.05)
+
+        print(" ✓")
+
+    except asyncio.CancelledError:
         try:
-            import pyaudio
-            p = pyaudio.PyAudio()
-            stream = p.open(
-                format=pyaudio.paInt16,
-                channels=1,
-                rate=22050,  # ElevenLabs outputs at 22050Hz
-                output=True,
-            )
-            while True:
-                with self._lock:
-                    if not self._buffer:
-                        break
-                    chunk = bytes(self._buffer[:4096])
-                    self._buffer = self._buffer[4096:]
-                stream.write(chunk)
-            stream.stop_stream()
-            stream.close()
-            p.terminate()
-        except Exception as exc:
-            logger.error("Audio playback error: %s", exc)
-        finally:
-            self._playing = False
-
-
-class MicRecorder:
-    """Records from microphone and yields PCM16 chunks."""
-
-    def __init__(self, chunk_size: int = CHUNK_SIZE):
-        self.chunk_size = chunk_size
-        self._running = False
-
-    def record_chunks(self):
-        """Generator that yields PCM16 audio chunks from mic."""
+            import pygame
+            pygame.mixer.music.stop()
+        except Exception:
+            pass
+        raise
+    except Exception as exc:
+        print(f" [error: {exc}]")
+    finally:
         try:
-            import pyaudio
-        except ImportError:
-            raise RuntimeError("pyaudio not installed. Run: pip install pyaudio")
-
-        p = pyaudio.PyAudio()
-        stream = p.open(
-            format=pyaudio.paInt16,
-            channels=CHANNELS,
-            rate=SAMPLE_RATE,
-            input=True,
-            frames_per_buffer=self.chunk_size // SAMPLE_WIDTH,
-        )
-
-        logger.info("🎤 Microphone open — speak now! (Ctrl+C to stop)")
-        self._running = True
-
-        try:
-            while self._running:
-                data = stream.read(
-                    self.chunk_size // SAMPLE_WIDTH,
-                    exception_on_overflow=False,
-                )
-                yield data
-        finally:
-            stream.stop_stream()
-            stream.close()
-            p.terminate()
-
-    def stop(self) -> None:
-        self._running = False
+            os.unlink(tmp_path)  # type: ignore[possibly-undefined]
+        except Exception:
+            pass
 
 
-def load_wav_chunks(wav_path: str, chunk_size: int = CHUNK_SIZE):
-    """Yield PCM16 chunks from a WAV file."""
-    with wave.open(wav_path, "rb") as wf:
-        if wf.getsampwidth() != 2:
-            raise ValueError("WAV file must be 16-bit PCM")
+# ─────────────────────────────────────────────────────────────────────────────
+# Microphone input
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def mic_chunks(chunk_samples: int = CHUNK_SIZE):
+    """Generator that yields raw PCM16 chunks from the default microphone."""
+    try:
+        import pyaudio
+    except ImportError:
+        raise RuntimeError("pyaudio not installed — run: pip install pyaudio")
+
+    p = pyaudio.PyAudio()
+    stream = p.open(
+        format=pyaudio.paInt16,
+        channels=CHANNELS,
+        rate=SAMPLE_RATE,
+        input=True,
+        frames_per_buffer=chunk_samples,
+    )
+    try:
+        while True:
+            yield stream.read(chunk_samples, exception_on_overflow=False)
+    finally:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+
+
+def wav_chunks(path: str, chunk_samples: int = CHUNK_SIZE):
+    """Yield PCM16 chunks from a 16kHz mono WAV file."""
+    with wave.open(path, "rb") as wf:
+        if wf.getsampwidth() != SAMPLE_WIDTH:
+            raise ValueError("WAV must be 16-bit PCM")
         if wf.getnchannels() != 1:
-            raise ValueError("WAV file must be mono")
+            raise ValueError("WAV must be mono")
         logger.info(
-            "📁 Loading WAV: %s (rate=%dHz, frames=%d)",
-            wav_path,
-            wf.getframerate(),
-            wf.getnframes(),
+            "WAV: %s  rate=%dHz  frames=%d",
+            path, wf.getframerate(), wf.getnframes(),
         )
         while True:
-            data = wf.readframes(chunk_size // SAMPLE_WIDTH)
+            data = wf.readframes(chunk_samples)
             if not data:
                 break
             yield data
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Push-to-talk keyboard thread
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PushToTalk:
+    """Monitors Enter key to toggle recording state."""
+
+    def __init__(self) -> None:
+        self._recording = threading.Event()
+        self._quit      = threading.Event()
+        self._thread    = threading.Thread(target=self._loop, daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._quit.set()
+
+    @property
+    def is_recording(self) -> bool:
+        return self._recording.is_set()
+
+    def _loop(self) -> None:
+        while not self._quit.is_set():
+            try:
+                input()  # blocks until Enter
+            except EOFError:
+                break
+            if self._recording.is_set():
+                self._recording.clear()   # stop recording
+            else:
+                self._recording.set()     # start recording
+
+    def wait_for_start(self) -> None:
+        """Block until the user presses Enter to begin recording."""
+        self._recording.wait()
+
+    def wait_for_stop(self) -> None:
+        """Block until the user presses Enter again to stop."""
+        while self._recording.is_set():
+            import time
+            time.sleep(0.05)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main simulator
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 async def run_simulator(
     ws_url: str,
-    token: str,
+    *,
+    jwt: str | None = None,
+    device_id: str | None = None,
     wav_path: str | None = None,
+    volume: int = 80,
 ) -> None:
-    """Main simulator loop."""
     try:
         import websockets
     except ImportError:
-        raise RuntimeError("websockets not installed. Run: pip install websockets")
+        raise RuntimeError("websockets not installed — run: pip install websockets")
 
-    logger.info("Connecting to %s ...", ws_url)
+    pygame_ok = _init_pygame(volume)
 
-    player = AudioPlayer()
-    audio_buffer = bytearray()
-    receiving_tts = False
+    # Build connection URL and headers
+    connect_kwargs: dict = {
+        "open_timeout": 30,
+        "ping_interval": 20,
+        "ping_timeout": 10,
+    }
 
-    # Pass token as query param — subprotocol with long JWT causes timeout
-    ws_url_with_token = f"{ws_url}?token={token}"
+    if device_id:
+        final_url = f"{ws_url}?device_id={device_id}"
+        logger.info("Connecting as device_id=%s ...", device_id)
+    elif jwt:
+        final_url = ws_url
+        connect_kwargs["subprotocols"] = [f"bearer.{jwt}"]
+        logger.info("Connecting with JWT ...")
+    else:
+        raise RuntimeError("Must provide either jwt or device_id")
 
-    async with websockets.connect(
-        ws_url_with_token,
-        open_timeout=30,
-        ping_interval=20,
-        ping_timeout=10,
-    ) as ws:
-        logger.info("✓ WebSocket connected")
+    async with websockets.connect(final_url, **connect_kwargs) as ws:
+        logger.info("✓ WebSocket connected to %s", ws_url)
 
-        async def receive_loop():
-            nonlocal receiving_tts, audio_buffer
-            try:
-                async for message in ws:
-                    if isinstance(message, bytes):
-                        # TTS audio chunk
-                        player.add_chunk(message)
-                        print("🔊", end="", flush=True)
-                    elif isinstance(message, str):
-                        try:
-                            data = json.loads(message)
-                        except json.JSONDecodeError:
-                            continue
+        # ── Receive loop ──────────────────────────────────────────────────────
+        play_audio_task: asyncio.Task | None = None
 
-                        msg_type = data.get("type", "")
-
-                        if msg_type == "connected":
-                            logger.info(
-                                "✓ Session started: %s", data.get("session_id", "")[:8]
-                            )
-
-                        elif msg_type == "listening":
-                            print("\n👂 BEAN is listening...")
-
-                        elif msg_type == "active_listen":
-                            filler = data.get("text", "")
-                            if filler:
-                                print(f"\n💬 [filler] {filler}")
-
-                        elif msg_type == "response_text":
-                            text = data.get("text", "")
-                            route = data.get("route", "unknown")
-                            print(f"\n🤖 BEAN [{route}]: {text}")
-
-                        elif msg_type == "tts_start":
-                            print("\n🔊 [TTS streaming...]", end="", flush=True)
-
-                        elif msg_type == "tts_end":
-                            print(" [done]")
-
-                        elif msg_type == "alert_notification":
-                            print(f"\n🚨 ALERT: {data.get('message', '')}")
-
-                        elif msg_type == "error":
-                            logger.error(
-                                "Server error [%s]: %s",
-                                data.get("code", ""),
-                                data.get("message", ""),
-                            )
-
-                        elif msg_type == "pong":
-                            pass  # keepalive
-
-                        else:
-                            logger.debug("Server message: %s", data)
-
-            except websockets.ConnectionClosed as exc:
-                logger.info("Connection closed: %s", exc)
-
-        # Start receive loop in background
-        receive_task = asyncio.create_task(receive_loop())
-
-        # Send audio
-        try:
-            if wav_path:
-                # Send WAV file chunks
-                for chunk in load_wav_chunks(wav_path):
-                    await ws.send(chunk)
-                    await asyncio.sleep(0.2)  # 200ms per chunk (real-time)
-                logger.info("✓ WAV file sent")
-                # Wait a bit for response
-                await asyncio.sleep(10)
-            else:
-                # Live mic recording
-                recorder = MicRecorder()
-                loop = asyncio.get_event_loop()
-
-                print("\n" + "="*50)
-                print("🎤 SPEAK TO BEAN — Press Ctrl+C to stop")
-                print("="*50 + "\n")
-
-                def send_mic_audio():
-                    try:
-                        for chunk in recorder.record_chunks():
-                            asyncio.run_coroutine_threadsafe(
-                                ws.send(chunk), loop
-                            )
-                    except Exception as exc:
-                        logger.error("Mic error: %s", exc)
-
-                mic_thread = threading.Thread(target=send_mic_audio, daemon=True)
-                mic_thread.start()
+        async def receive_loop() -> None:
+            nonlocal play_audio_task
+            async for message in ws:
+                if isinstance(message, bytes):
+                    # Binary = music chunk (TTS is HTTP, not WS binary)
+                    print("🎵", end="", flush=True)
+                    continue
 
                 try:
-                    await receive_task
-                except asyncio.CancelledError:
+                    data = json.loads(message)
+                except json.JSONDecodeError:
+                    continue
+
+                msg_type = data.get("type", "")
+
+                if msg_type == "connected":
+                    sid = data.get("session_id", "")[:8]
+                    print(f"\n✓ Session started  [id={sid}]")
+
+                elif msg_type == "transcript_partial":
+                    text = data.get("text", "")
+                    print(f"\r  🎤 Partial: {text:<60}", end="", flush=True)
+
+                elif msg_type == "transcript_final":
+                    text = data.get("text", "")
+                    conf = data.get("confidence", 0)
+                    print(f"\n  📝 Final [{conf:.0%}]: {text}")
+
+                elif msg_type == "response_text":
+                    text  = data.get("text", "")
+                    route = data.get("route", "?")
+                    print(f"\n  🤖 BEAN [{route}]: {text}")
+
+                elif msg_type == "play_audio":
+                    url = data.get("url", "")
+                    if url and pygame_ok:
+                        # Cancel previous playback if still running
+                        if play_audio_task and not play_audio_task.done():
+                            play_audio_task.cancel()
+                        play_audio_task = asyncio.create_task(play_mp3_from_url(url))
+                    elif url:
+                        print(f"\n  🔊 [audio URL — pygame not available]: {url}")
+
+                elif msg_type == "alert_notification":
+                    print(f"\n  🚨 ALERT: {data.get('message', '')}")
+
+                elif msg_type == "music_start":
+                    title = data.get("title", "Unknown")
+                    mood  = data.get("mood", "")
+                    print(f"\n  🎵 Music: {title}  [{mood}]")
+
+                elif msg_type == "music_stopped":
+                    print("\n  ⏹  Music stopped")
+
+                elif msg_type == "music_volume":
+                    print(f"\n  🔉 Volume: {data.get('volume')}%")
+
+                elif msg_type == "music_unavailable":
+                    print(f"\n  ⚠  Music unavailable: {data.get('message','')}")
+
+                elif msg_type == "error":
+                    code = data.get("code", "")
+                    msg  = data.get("message", "")
+                    print(f"\n  ❌ Error [{code}]: {msg}")
+
+                elif msg_type == "ping":
+                    await ws.send(json.dumps({"type": "pong"}))
+
+                elif msg_type == "pong":
                     pass
-                finally:
-                    recorder.stop()
+
+                else:
+                    logger.debug("Server: %s", data)
+
+        receive_task = asyncio.create_task(receive_loop())
+        loop = asyncio.get_event_loop()
+
+        try:
+            if wav_path:
+                # ── WAV file mode ─────────────────────────────────────────────
+                print(f"\n  Sending WAV file: {wav_path}")
+                for chunk in wav_chunks(wav_path):
+                    await ws.send(chunk)
+                    await asyncio.sleep(0.1)   # 100ms per chunk
+                print("  ✓ WAV sent — sending stop_recording")
+                await ws.send(json.dumps({"type": "stop_recording"}))
+                # Wait for response + playback
+                await asyncio.sleep(15)
+
+            else:
+                # ── Live mic push-to-talk mode ────────────────────────────────
+                ptt = PushToTalk()
+                ptt.start()
+
+                print("\n" + "═" * 52)
+                print("  Press  ENTER  to start talking")
+                print("  Press  ENTER  again to stop and get response")
+                print("  Ctrl+C to quit")
+                print("═" * 52)
+
+                while True:
+                    # Wait for user to press Enter to start
+                    print("\n  [IDLE] Press ENTER to start recording...", flush=True)
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, ptt.wait_for_start
+                    )
+
+                    print("  [RECORDING] 🎤 Speak now — press ENTER to stop", flush=True)
+
+                    # Stream mic audio in a background thread
+                    stop_flag = threading.Event()
+
+                    def stream_mic() -> None:
+                        try:
+                            for chunk in mic_chunks():
+                                if stop_flag.is_set():
+                                    break
+                                asyncio.run_coroutine_threadsafe(
+                                    ws.send(chunk), loop
+                                )
+                        except Exception as exc:
+                            logger.error("Mic stream error: %s", exc)
+
+                    mic_thread = threading.Thread(target=stream_mic, daemon=True)
+                    mic_thread.start()
+
+                    # Wait for Enter to stop recording
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, ptt.wait_for_stop
+                    )
+
+                    # Stop mic and tell server
+                    stop_flag.set()
+                    mic_thread.join(timeout=1.0)
+
+                    print("  [WAITING] ⏳ Processing...", flush=True)
+                    await ws.send(json.dumps({"type": "stop_recording"}))
+
+                    # Wait a bit before next round so response can play
+                    await asyncio.sleep(0.5)
 
         except KeyboardInterrupt:
-            logger.info("\nStopping...")
+            print("\n\n  Stopping...")
         finally:
-            receive_task.cancel()
             try:
                 await ws.send(json.dumps({"type": "end_session"}))
+            except Exception:
+                pass
+            receive_task.cancel()
+            if play_audio_task and not play_audio_task.done():
+                play_audio_task.cancel()
+            try:
+                await asyncio.gather(receive_task, return_exceptions=True)
             except Exception:
                 pass
 
     logger.info("✓ Session ended")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Entry point
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 async def main() -> None:
     args = parse_args()
     load_env()
 
-    print("\n" + "="*50)
-    print("  BEAN AI — Fake ESP32 Simulator")
-    print("="*50)
+    print()
+    print("╔══════════════════════════════════════════════════╗")
+    print("║        BEAN AI — ESP32 Simulator v2              ║")
+    print("║    Microphone → Server → Laptop Speakers         ║")
+    print("╚══════════════════════════════════════════════════╝")
 
-    # Get auth token
-    try:
-        token = await get_supabase_token(args.email, args.password)
-    except Exception as exc:
-        logger.error("Auth failed: %s", repr(exc))
-        import traceback
-        traceback.print_exc()
-        logger.info(
-            "Tip: Make sure you have a user registered in Supabase. "
-            "Go to Supabase Dashboard → Authentication → Users → Add user"
-        )
+    jwt: str | None = None
+    device_id: str | None = args.device_id
+
+    if args.email:
+        if not args.password:
+            print("ERROR: --password is required with --email")
+            sys.exit(1)
+        try:
+            jwt = await get_jwt(args.email, args.password)
+        except Exception as exc:
+            logger.error("Auth failed: %s", exc)
+            print(
+                "\nTip: Make sure SUPABASE_URL and SUPABASE_ANON_KEY are set in .env\n"
+                "     and you have a registered user in Supabase Auth."
+            )
+            sys.exit(1)
+    elif not device_id:
+        print("ERROR: provide --email/--password or --device-id")
         sys.exit(1)
 
-    # Run simulator
     try:
         await run_simulator(
             ws_url=args.url,
-            token=token,
+            jwt=jwt,
+            device_id=device_id,
             wav_path=args.wav,
+            volume=args.volume,
         )
     except Exception as exc:
         logger.error("Simulator error: %s", exc)
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 
