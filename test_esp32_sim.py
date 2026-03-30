@@ -334,13 +334,42 @@ async def run_simulator(
 
         # ── Receive loop ──────────────────────────────────────────────────────
         play_audio_task: asyncio.Task | None = None
+        tts_buffer: bytearray = bytearray()
+        in_tts: bool = False
+
+        async def _play_tts_buffer(buf: bytes) -> None:
+            """Write buffered TTS binary frames to a temp file and play."""
+            if not buf or not pygame_ok:
+                return
+            try:
+                import pygame
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                    f.write(buf)
+                    tmp_path = f.name
+                print(f"  🔊 Playing TTS ({len(buf)//1024}KB)...", end="", flush=True)
+                pygame.mixer.music.load(tmp_path)
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    await asyncio.sleep(0.05)
+                print(" done")
+            except Exception as exc:
+                print(f" [error: {exc}]")
+            finally:
+                try:
+                    os.unlink(tmp_path)  # type: ignore[possibly-undefined]
+                except Exception:
+                    pass
 
         async def receive_loop() -> None:
-            nonlocal play_audio_task
+            nonlocal play_audio_task, tts_buffer, in_tts
             async for message in ws:
                 if isinstance(message, bytes):
-                    # Binary = music chunk (TTS is HTTP, not WS binary)
-                    print("🎵", end="", flush=True)
+                    if in_tts:
+                        # Binary TTS chunk — buffer until response_audio_end
+                        tts_buffer.extend(message)
+                    else:
+                        # Binary = background music chunk
+                        print("🎵", end="", flush=True)
                     continue
 
                 try:
@@ -367,11 +396,25 @@ async def run_simulator(
                     text  = data.get("text", "")
                     route = data.get("route", "?")
                     print(f"\n  🤖 BEAN [{route}]: {text}")
+                    # Next binary frames will be TTS audio
+                    in_tts = True
+                    tts_buffer.clear()
+
+                elif msg_type == "response_audio_end":
+                    # TTS stream complete — play the buffered audio
+                    in_tts = False
+                    if tts_buffer:
+                        buf = bytes(tts_buffer)
+                        tts_buffer.clear()
+                        if play_audio_task and not play_audio_task.done():
+                            play_audio_task.cancel()
+                        play_audio_task = asyncio.create_task(_play_tts_buffer(buf))
 
                 elif msg_type == "play_audio":
+                    # HTTP URL mode (feature/fixing server)
+                    in_tts = False
                     url = data.get("url", "")
                     if url and pygame_ok:
-                        # Cancel previous playback if still running
                         if play_audio_task and not play_audio_task.done():
                             play_audio_task.cancel()
                         play_audio_task = asyncio.create_task(play_mp3_from_url(url, jwt=jwt))
