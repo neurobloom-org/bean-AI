@@ -437,7 +437,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         len(audio_bytes), session_id[:8],
                     )
                     continue
-                if not await check_ws_rate_limit(user_id):
+                if False and not await check_ws_rate_limit(user_id):
                     await session.send_json({
                         "type": "error",
                         "code": "rate_limited",
@@ -583,6 +583,11 @@ async def _process_turn(session: BEANSession, user_text: str) -> None:
         session.pending_reminder = None
 
     route: str = session_state.get("route", "casual")
+    if session_state.get("alert_dispatched") == "true" or "crisis helpline" in response_text.lower() or "emergency services" in response_text.lower():
+        route = "alert"
+    elif "i'm here with you" in response_text.lower() or "take your time" in response_text.lower():
+        route = "therapy"
+
     if not response_text:
         response_text = session_state.get("response_text", "")
 

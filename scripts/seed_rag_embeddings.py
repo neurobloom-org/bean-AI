@@ -365,7 +365,7 @@ async def fetch_unembedded_batch(
 ) -> list[TechniqueRow]:
     query = (
         client.table("rag_techniques")
-        .select("id, name, description, example, category")
+        .select("id, technique_name, content, category")
         .is_("embedding", "null")
         .order("id")
         .limit(batch_size)
@@ -383,9 +383,9 @@ async def fetch_unembedded_batch(
         techniques.append(
             TechniqueRow(
                 id=str(row["id"]),
-                name=str(row["name"]),
-                description=str(row["description"]),
-                example=row.get("example"),
+                name=str(row["technique_name"]),
+                description=str(row["content"]),
+                example=None,
                 category=row.get("category"),
             )
         )
@@ -394,12 +394,10 @@ async def fetch_unembedded_batch(
 
 
 async def count_embedded_rows(client: Any) -> int:
-    # FIX: use .neq() instead of .not_("embedding", "is", "null") for
-    # broader supabase-py v2 compatibility across PostgREST versions.
     result = (
         await client.table("rag_techniques")
-        .select("id", count="planned", head=True)
-        .neq("embedding", None)
+        .select("id", count="exact", head=True)
+        .not_.is_("embedding", "null")
         .execute()
     )
     return int(result.count or 0)
@@ -408,7 +406,7 @@ async def count_embedded_rows(client: Any) -> int:
 async def count_remaining_rows(client: Any) -> int:
     result = (
         await client.table("rag_techniques")
-        .select("id", count="planned", head=True)
+        .select("id", count="exact", head=True)
         .is_("embedding", "null")
         .execute()
     )
