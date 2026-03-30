@@ -133,7 +133,7 @@ async def hybrid_search_techniques(
         "search_rag_techniques",
         {
             "p_query_embedding": embedding,
-            "p_min_similarity": 0.65,
+            "p_min_similarity": 0.1,
             "p_limit": top_k * 2,
         },
     ).execute()

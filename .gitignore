@@ -53,3 +53,5 @@ models/
 # voice files ──────────────────────────────────────────────────────────────────
 scripts/*.mp3
 scripts/*.wav
+
+regenerate_rag.py
