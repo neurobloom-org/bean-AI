@@ -423,11 +423,11 @@ async def run_simulator(
                 ptt = PushToTalk()
                 ptt.start()
 
-                print("\n" + "═" * 52)
+                print("\n" + "=" * 52)
                 print("  Press  ENTER  to start talking")
                 print("  Press  ENTER  again to stop and get response")
                 print("  Ctrl+C to quit")
-                print("═" * 52)
+                print("=" * 52)
 
                 while True:
                     # Wait for user to press Enter to start
@@ -498,10 +498,10 @@ async def main() -> None:
     load_env()
 
     print()
-    print("╔══════════════════════════════════════════════════╗")
-    print("║        BEAN AI — ESP32 Simulator v2              ║")
-    print("║    Microphone → Server → Laptop Speakers         ║")
-    print("╚══════════════════════════════════════════════════╝")
+    print("=" * 52)
+    print("   BEAN AI - ESP32 Simulator v2")
+    print("   Microphone -> Server -> Laptop Speakers")
+    print("=" * 52)
 
     jwt: str | None = None
     device_id: str | None = args.device_id
