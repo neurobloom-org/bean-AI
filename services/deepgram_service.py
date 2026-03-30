@@ -158,7 +158,7 @@ class DeepgramConnection:
 
             self._ws = await websockets.connect(
                 url,
-                additional_headers=headers,
+                extra_headers=headers,
                 ping_interval=self._settings.ws_ping_interval_seconds,
                 ping_timeout=10,
                 close_timeout=5,
