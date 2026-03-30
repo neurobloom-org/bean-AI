@@ -137,7 +137,7 @@ def _init_pygame(volume: int) -> bool:
         return False
 
 
-async def play_mp3_from_url(url: str) -> None:
+async def play_mp3_from_url(url: str, jwt: str | None = None) -> None:
     """Download MP3 stream from URL and play through laptop speakers."""
     try:
         import httpx
@@ -147,13 +147,19 @@ async def play_mp3_from_url(url: str) -> None:
         return
 
     print("  🔊 Downloading audio...", end="", flush=True)
+    headers = {}
+    if jwt:
+        headers["Authorization"] = f"Bearer {jwt}"
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             # Stream the HTTP response (chunked) and buffer it
             audio_bytes = b""
-            async with client.stream("GET", url) as response:
+            async with client.stream("GET", url, headers=headers) as response:
                 if response.status_code == 404:
                     print(" [stream not found]")
+                    return
+                if response.status_code == 401:
+                    print(" [401 unauthorized — JWT may have expired]")
                     return
                 async for chunk in response.aiter_bytes(chunk_size=4096):
                     audio_bytes += chunk
@@ -368,7 +374,7 @@ async def run_simulator(
                         # Cancel previous playback if still running
                         if play_audio_task and not play_audio_task.done():
                             play_audio_task.cancel()
-                        play_audio_task = asyncio.create_task(play_mp3_from_url(url))
+                        play_audio_task = asyncio.create_task(play_mp3_from_url(url, jwt=jwt))
                     elif url:
                         print(f"\n  🔊 [audio URL — pygame not available]: {url}")
 
