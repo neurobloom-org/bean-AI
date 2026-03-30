@@ -74,7 +74,10 @@ PUBLIC_PATHS: frozenset[str] = frozenset(
 # Path prefixes that are always public (e.g. "/static/").
 # Requests under /internal/ bypass Supabase JWT middleware and are protected
 # separately by the X-Internal-Key dependency in api/main.py.
-PUBLIC_PATH_PREFIXES: tuple[str, ...] = ("/internal/",)
+PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
+    "/internal/",
+    "/audio/stream/",  # one-time token auth, no JWT required
+)
 
 # ── JWKS cache ────────────────────────────────────────────────────────────────
 
